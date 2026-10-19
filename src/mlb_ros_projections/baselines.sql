@@ -108,6 +108,7 @@ SELECT
     s.batter,
     s.pa_ytd,
     s.pa_ros,
+    s.woba_denom_ytd,
     s.woba_denom_ros,
 
     -- Baseline 1: the hitter keeps doing exactly what they've done so far.
