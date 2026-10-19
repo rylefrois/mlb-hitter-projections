@@ -1,4 +1,4 @@
-"""Create the DuckDB database with a view over the raw Parquet files.
+"""Create the DuckDB database with views over the raw Parquet files.
 
 Usage:
     python -m mlb_ros_projections.build_db
@@ -18,6 +18,10 @@ def build() -> None:
     con.execute("""
         CREATE OR REPLACE VIEW pitches AS
         SELECT * FROM read_parquet('data/raw/statcast_*.parquet')
+    """)
+    con.execute("""
+        CREATE OR REPLACE VIEW people AS
+        SELECT * FROM read_parquet('data/raw/people.parquet')
     """)
     con.close()
     print(f"built {DB_PATH}")

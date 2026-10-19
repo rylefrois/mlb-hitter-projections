@@ -1,4 +1,4 @@
-"""Build hitter feature tables in DuckDB from the raw pitches view.
+"""Build feature and baseline tables in DuckDB from the raw views.
 
 Usage:
     python -m mlb_ros_projections.features
@@ -10,18 +10,31 @@ import duckdb
 
 from mlb_ros_projections.build_db import DB_PATH
 
-SQL_PATH = Path(__file__).with_name("features.sql")
+SQL_DIR = Path(__file__).parent
+
+# Run in this order: each file reads tables the earlier ones create.
+SQL_FILES = ["features.sql", "baselines.sql"]
+
+TABLES = [
+    "pa", "batter_day", "batter_season", "snapshot_dates", "batter_snapshot",
+    "league_season", "batter_age", "marcel", "batter_baselines",
+]
+
+
+def run_sql_file(con: duckdb.DuckDBPyConnection, name: str) -> None:
+    con.execute((SQL_DIR / name).read_text())
 
 
 def build_features(con: duckdb.DuckDBPyConnection) -> None:
     """Run features.sql against a connection that has a `pitches` table or view."""
-    con.execute(SQL_PATH.read_text())
+    run_sql_file(con, "features.sql")
 
 
 def main() -> None:
     con = duckdb.connect(str(DB_PATH))
-    build_features(con)
-    for table in ["pa", "batter_day", "batter_season", "snapshot_dates", "batter_snapshot"]:
+    for name in SQL_FILES:
+        run_sql_file(con, name)
+    for table in TABLES:
         n = con.execute(f"SELECT count(*) FROM {table}").fetchone()[0]
         print(f"{table}: {n:,} rows")
     con.close()
