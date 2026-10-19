@@ -2,7 +2,13 @@ import numpy as np
 import pandas as pd
 import pytest
 
-from mlb_ros_projections.models import ModelSpec, fit, predict
+from mlb_ros_projections.models import (
+    ModelSpec,
+    fit,
+    fit_interval_scale,
+    predict,
+    predictive_sd,
+)
 
 BASIC = ModelSpec()
 
@@ -70,3 +76,32 @@ def test_fit_recovers_known_prior_strength():
     params = fit(train, "k_rate", BASIC)
 
     assert params["strength"] == pytest.approx(expected, rel=0.15)
+
+
+def test_predictive_sd_adds_talent_and_luck_variance():
+    # Forecast 0.25: per-PA variance 0.1875. Evidence 100 PA + 100 prior = 200; 300 PA left.
+    df = one_row(pa_ros=300, woba_denom_ros=270)
+    sd = predict_sd_for(df, "k_rate", 0.25)
+    assert sd == pytest.approx(np.sqrt(0.1875 / 200 + 0.1875 / 300))
+
+
+def test_predictive_sd_for_woba_uses_previous_season_per_pa_variance():
+    df = one_row(pa_ros=300, woba_denom_ros=270, prev_woba_pa_var=0.25)
+    sd = predict_sd_for(df, "woba", 0.330)
+    assert sd == pytest.approx(np.sqrt(0.25 / (90 + 100) + 0.25 / 270))
+
+
+def test_interval_scale_is_one_when_errors_match_the_model():
+    # Simulate actuals from exactly the distribution the model describes.
+    rng = np.random.default_rng(1)
+    n = 50_000
+    df = pd.concat([one_row(pa_ros=300, woba_denom_ros=270)] * n, ignore_index=True)
+    params = {"strength": 100}
+    forecast = predict(df, "k_rate", params, BASIC)
+    sd = predictive_sd(df, "k_rate", forecast, params, BASIC)
+    df["actual_k_rate"] = forecast + rng.normal(0, sd)
+    assert fit_interval_scale(df, "k_rate", params, BASIC) == pytest.approx(1.0, abs=0.02)
+
+
+def predict_sd_for(df, stat, forecast):
+    return predictive_sd(df, stat, np.array([forecast]), {"strength": 100}, BASIC)[0]

@@ -88,15 +88,56 @@ def predict(df: pd.DataFrame, stat: str, params: dict[str, float], spec: ModelSp
         factor = df[f"{stat}_factor"].to_numpy(dtype=float)
         prior = prior * (1 + params["environment_weight"] * (factor - 1))
 
-    if spec.history_prior:
-        wpa = df["marcel_weighted_pa"].to_numpy(dtype=float)
-        reliability = wpa / (wpa + MARCEL_REGRESSION_PA)
-        lo, hi = params["strength_no_history"], params["strength_full_history"]
-        strength = lo + (hi - lo) * reliability
-    else:
-        strength = params["strength"]
-
+    strength = prior_strength(df, params, spec)
     return (events + strength * prior) / (trials + strength)
+
+
+def prior_strength(df: pd.DataFrame, params: dict[str, float], spec: ModelSpec) -> np.ndarray:
+    """How many PA of evidence the Marcel prior is worth, for each row."""
+    if not spec.history_prior:
+        return np.full(len(df), params["strength"])
+    wpa = df["marcel_weighted_pa"].to_numpy(dtype=float)
+    reliability = wpa / (wpa + MARCEL_REGRESSION_PA)
+    lo, hi = params["strength_no_history"], params["strength_full_history"]
+    return lo + (hi - lo) * reliability
+
+
+def predictive_sd(
+    df: pd.DataFrame, stat: str, forecast: np.ndarray, params: dict[str, float], spec: ModelSpec
+) -> np.ndarray:
+    """Standard deviation of the rest-of-season rate, before any width correction.
+
+    Two parts, added as variances:
+      talent: we only know the hitter's true rate to within (per-PA variance) / (evidence),
+              where evidence = this season's PA + the prior's strength in PA.
+      luck:   even with talent known, the remaining PA vary by (per-PA variance) / (PA left).
+
+    The luck part uses the PA the hitter actually had left, so the range is for
+    "the hitter's next N PA". Playing time itself is not forecast.
+    """
+    if stat == "woba":
+        per_pa_var = df["prev_woba_pa_var"].to_numpy(dtype=float)
+    else:
+        per_pa_var = forecast * (1 - forecast)  # binomial variance of one PA
+    _, trials_col = YTD_COLUMNS[stat]
+    evidence = df[trials_col].to_numpy(dtype=float) + prior_strength(df, params, spec)
+    remaining = df[STATS[stat]].to_numpy(dtype=float)
+    with np.errstate(divide="ignore"):  # no PA left: an infinitely wide range, never scored
+        return np.sqrt(per_pa_var / evidence + per_pa_var / remaining)
+
+
+def fit_interval_scale(
+    df: pd.DataFrame, stat: str, params: dict[str, float], spec: ModelSpec
+) -> float:
+    """Width correction so standardized errors have variance 1 on these rows.
+
+    Above 1 means the raw ranges were too narrow (overconfident).
+    """
+    forecast = predict(df, stat, params, spec)
+    z = (df[f"actual_{stat}"].to_numpy(dtype=float) - forecast) / predictive_sd(
+        df, stat, forecast, params, spec
+    )
+    return float(np.sqrt(np.mean(z**2)))
 
 
 def fit(train: pd.DataFrame, stat: str, spec: ModelSpec) -> dict[str, float]:
@@ -135,6 +176,10 @@ def forward_chain(
 ) -> tuple[pd.DataFrame, pd.DataFrame]:
     """Forecast each season with parameters fit only on earlier seasons.
 
+    Each forecast has a column per stat, plus `{stat}_sd_raw` (model-based
+    standard deviation) and `{stat}_sd` (after the width correction, which
+    is also learned from earlier seasons only).
+
     Returns (forecasts, fitted parameters by season and stat).
     """
     trainable = (
@@ -149,8 +194,12 @@ def forward_chain(
         forecast = test[KEYS].copy()
         for stat in STATS:
             params = fit(train, stat, spec)
+            scale = fit_interval_scale(train, stat, params, spec)
             forecast[stat] = predict(test, stat, params, spec)
-            fitted.append({"season": season, "stat": stat, "train_rows": len(train), **params})
+            forecast[f"{stat}_sd_raw"] = predictive_sd(test, stat, forecast[stat], params, spec)
+            forecast[f"{stat}_sd"] = scale * forecast[f"{stat}_sd_raw"]
+            fitted.append({"season": season, "stat": stat, "train_rows": len(train), **params,
+                           "interval_scale": scale})
         forecasts.append(forecast)
     return pd.concat(forecasts, ignore_index=True), pd.DataFrame(fitted)
 

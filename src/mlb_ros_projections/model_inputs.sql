@@ -34,6 +34,15 @@ JOIN league_snapshot AS p
 GROUP BY c.season, c.asof_date, c.k_rate, c.ubb_rate, c.woba;
 
 
+-- How much a single PA's wOBA value varies, by season. Forecast ranges use
+-- the previous season's value, which is known at forecast time.
+CREATE OR REPLACE TABLE woba_pa_variance AS
+SELECT season, var_pop(woba_value) AS woba_pa_var
+FROM pa
+WHERE woba_denom = 1
+GROUP BY season;
+
+
 -- One row per hitter and forecast date: this season's counts so far, the
 -- Marcel prior, the environment factors, and the rest-of-season actuals.
 CREATE OR REPLACE TABLE model_inputs AS
@@ -59,6 +68,8 @@ SELECT
     coalesce(e.ubb_rate_factor, 1) AS ubb_rate_factor,
     coalesce(e.woba_factor, 1)     AS woba_factor,
 
+    v.woba_pa_var AS prev_woba_pa_var,
+
     s.pa_ros,
     s.woba_denom_ros,
     s.k_ros   / nullif(s.pa_ros, 0)              AS actual_k_rate,
@@ -66,4 +77,5 @@ SELECT
     s.woba_num_ros / nullif(s.woba_denom_ros, 0) AS actual_woba
 FROM batter_snapshot AS s
 JOIN marcel AS m USING (season, batter)
-LEFT JOIN environment AS e USING (season, asof_date);
+LEFT JOIN environment AS e USING (season, asof_date)
+LEFT JOIN woba_pa_variance AS v ON v.season = s.season - 1;
