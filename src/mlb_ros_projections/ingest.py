@@ -11,6 +11,8 @@ from pathlib import Path
 
 import pandas as pd
 import pybaseball
+import pybaseball.datasources.statcast as pybaseball_statcast_source
+import requests
 
 RAW_DIR = Path("data/raw")
 
@@ -35,6 +37,22 @@ def month_ranges(year: int) -> list[tuple[str, str]]:
         end = date(year, month + 1, 1) - timedelta(days=1)
         ranges.append((start.isoformat(), end.isoformat()))
     return ranges
+
+
+class _RequestsWithTimeout:
+    """Stand-in for the `requests` module that always sets a timeout.
+
+    pybaseball calls requests.get(..., timeout=None), so a stalled connection
+    to Savant hangs forever instead of raising an error we can retry.
+    """
+
+    def get(self, url, **kwargs):
+        kwargs["timeout"] = (15, 180)  # (connect, read) seconds
+        return requests.get(url, **kwargs)
+
+
+def add_request_timeout() -> None:
+    pybaseball_statcast_source.requests = _RequestsWithTimeout()
 
 
 def fetch_range(start: str, end: str, attempts: int = 4) -> pd.DataFrame | None:
@@ -92,6 +110,7 @@ def main() -> None:
     args = parser.parse_args()
 
     pybaseball.cache.enable()
+    add_request_timeout()
 
     for year in range(args.start, args.end + 1):
         path = RAW_DIR / f"statcast_{year}.parquet"
