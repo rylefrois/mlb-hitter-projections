@@ -40,20 +40,27 @@ PA_YTD_LABELS = ["1-49", "50-149", "150-299", "300+"]
 REPORTS_DIR = Path("reports")
 
 
+def is_scored(df: pd.DataFrame) -> pd.Series:
+    """Which hitter-snapshots count: forecasts are scored on these, and models train on them."""
+    return (
+        (df["pa_ytd"] >= 1)
+        & (df["woba_denom_ytd"] >= 1)  # else season-to-date wOBA is undefined (e.g. only IBBs)
+        & (df["pa_ros"] >= MIN_PA_ROS)
+    )
+
+
 def load_targets(con: duckdb.DuckDBPyConnection) -> pd.DataFrame:
     """The rows every forecast is scored on, with rest-of-season actuals."""
     targets = con.execute(
         """
-        SELECT season, asof_date, batter, pa_ytd, pa_ros, woba_denom_ros,
+        SELECT season, asof_date, batter, pa_ytd, woba_denom_ytd, pa_ros, woba_denom_ros,
                actual_k_rate AS k_rate, actual_ubb_rate AS ubb_rate, actual_woba AS woba
         FROM batter_baselines
         WHERE season IN (SELECT unnest(?))
-          AND pa_ytd >= 1
-          AND woba_denom_ytd >= 1  -- else season-to-date wOBA is undefined (e.g. only IBBs)
-          AND pa_ros >= ?
         """,
-        [EVAL_SEASONS, MIN_PA_ROS],
+        [EVAL_SEASONS],
     ).df()
+    targets = targets[is_scored(targets)].reset_index(drop=True)
     targets["asof_month"] = pd.Categorical(
         pd.to_datetime(targets["asof_date"]).dt.strftime("%b"),
         categories=["May", "Jun", "Jul", "Aug", "Sep"],
@@ -172,9 +179,14 @@ def print_table(results: pd.DataFrame, by: str | None = None) -> None:
 
 
 def main() -> None:
+    # Imported here because models.py imports this module's scoring rules.
+    from mlb_ros_projections.models import model_forecasts
+
     con = duckdb.connect(str(DB_PATH), read_only=True)
     targets = load_targets(con)
     forecasts = load_baseline_forecasts(con)
+    models, params = model_forecasts(con)
+    forecasts.update(models)
     noise = noise_variance(con)
     con.close()
 
@@ -184,7 +196,15 @@ def main() -> None:
     for by in [None, "asof_month", "pa_ytd_bucket"]:
         results = evaluate(targets, forecasts, noise, by=by)
         print_table(results, by=by)
-        results.to_csv(REPORTS_DIR / f"backtest_baselines_{by or 'overall'}.csv", index=False)
+        results.to_csv(REPORTS_DIR / f"backtest_{by or 'overall'}.csv", index=False)
+
+    all_params = pd.concat(
+        [p.assign(model=name) for name, p in params.items()], ignore_index=True
+    )
+    all_params.to_csv(REPORTS_DIR / "model_params.csv", index=False)
+    print("\nFitted parameters (eb_full), by forecast season:")
+    eb_full = all_params[all_params["model"] == "eb_full"].drop(columns="model")
+    print(eb_full.dropna(axis=1, how="all").round(3).to_string(index=False))
 
 
 if __name__ == "__main__":

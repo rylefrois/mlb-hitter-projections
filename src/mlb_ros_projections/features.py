@@ -1,4 +1,4 @@
-"""Build feature and baseline tables in DuckDB from the raw views.
+"""Build feature, baseline, and model-input tables in DuckDB from the raw views.
 
 Usage:
     python -m mlb_ros_projections.features
@@ -13,11 +13,12 @@ from mlb_ros_projections.build_db import DB_PATH
 SQL_DIR = Path(__file__).parent
 
 # Run in this order: each file reads tables the earlier ones create.
-SQL_FILES = ["features.sql", "baselines.sql"]
+SQL_FILES = ["features.sql", "baselines.sql", "model_inputs.sql"]
 
 TABLES = [
     "pa", "batter_day", "batter_season", "snapshot_dates", "batter_snapshot",
     "league_season", "batter_age", "marcel", "batter_baselines",
+    "league_snapshot", "environment", "model_inputs",
 ]
 
 
