@@ -1,5 +1,5 @@
 -- Inputs for the empirical-Bayes model (models.py).
--- Needs: batter_snapshot (features.sql), marcel (baselines.sql).
+-- Needs: batter_snapshot (features.sql), marcel (baselines.sql), park exposure (parks.sql).
 
 
 -- League rates from opening day up to each forecast date.
@@ -76,6 +76,19 @@ SELECT
 
     v.woba_pa_var AS prev_woba_pa_var,
 
+    -- Park factors (parks.sql): where this season's PA happened, the parks
+    -- behind the Marcel projection, and the team's remaining schedule.
+    -- Missing means no PA or no park data yet: treat as neutral.
+    coalesce(py.pf_ytd_k_rate, 1)    AS pf_ytd_k_rate,
+    coalesce(py.pf_ytd_ubb_rate, 1)  AS pf_ytd_ubb_rate,
+    coalesce(py.pf_ytd_woba, 1)      AS pf_ytd_woba,
+    coalesce(ph.pf_hist_k_rate, 1)   AS pf_hist_k_rate,
+    coalesce(ph.pf_hist_ubb_rate, 1) AS pf_hist_ubb_rate,
+    coalesce(ph.pf_hist_woba, 1)     AS pf_hist_woba,
+    coalesce(pr.pf_ros_k_rate, 1)    AS pf_ros_k_rate,
+    coalesce(pr.pf_ros_ubb_rate, 1)  AS pf_ros_ubb_rate,
+    coalesce(pr.pf_ros_woba, 1)      AS pf_ros_woba,
+
     s.pa_ros,
     s.woba_denom_ros,
     s.k_ros   / nullif(s.pa_ros, 0)              AS actual_k_rate,
@@ -85,4 +98,7 @@ FROM batter_snapshot AS s
 JOIN marcel AS m USING (season, batter)
 LEFT JOIN environment AS e USING (season, asof_date)
 LEFT JOIN league_snapshot AS ls USING (season, asof_date)
+LEFT JOIN park_exposure_ytd AS py USING (season, asof_date, batter)
+LEFT JOIN park_exposure_ros AS pr USING (season, asof_date, batter)
+LEFT JOIN park_exposure_hist AS ph USING (season, batter)
 LEFT JOIN woba_pa_variance AS v ON v.season = s.season - 1;

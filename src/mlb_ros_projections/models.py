@@ -46,6 +46,7 @@ class ModelSpec:
     use_xwoba: bool = False       # wOBA forecasts also use this season's xwOBA
     environment: bool = False     # shift the prior when the league environment changes
     playing_time_prior: bool = False  # shift the prior for hitters with little history or PA
+    parks: bool = False           # neutralize inputs for park, then apply remaining schedule
 
 
 MODEL_SPECS = {
@@ -54,6 +55,9 @@ MODEL_SPECS = {
     "eb_full": ModelSpec(history_prior=True, use_xwoba=True, environment=True),
     "eb_playing_time": ModelSpec(
         history_prior=True, use_xwoba=True, environment=True, playing_time_prior=True
+    ),
+    "eb_park": ModelSpec(
+        history_prior=True, use_xwoba=True, environment=True, playing_time_prior=True, parks=True
     ),
 }
 
@@ -78,20 +82,35 @@ def param_bounds(stat: str, spec: ModelSpec) -> dict[str, tuple[float, float]]:
         # Relative shifts to the prior; the sign is learned, not assumed.
         bounds["shift_no_history"] = (-0.5, 0.5)
         bounds["shift_part_time"] = (-0.5, 0.5)
+    if spec.parks:
+        # 0 = ignore park factors, 1 = use them as estimated. Three seasons of
+        # park data is noisy, so the best weight is likely below 1.
+        bounds["park_weight"] = (0.0, 1.5)
     return bounds
+
+
+def park_adjustment(df: pd.DataFrame, column: str, params: dict[str, float]) -> np.ndarray:
+    """Park factor in `column`, shrunk toward neutral (1.0) by the learned park weight."""
+    return 1 + params["park_weight"] * (df[column].to_numpy(dtype=float) - 1)
 
 
 def predict(df: pd.DataFrame, stat: str, params: dict[str, float], spec: ModelSpec) -> np.ndarray:
     events_col, trials_col = YTD_COLUMNS[stat]
     trials = df[trials_col].to_numpy(dtype=float)
     events = df[events_col].to_numpy(dtype=float)
+    prior = df[f"marcel_{stat}"].to_numpy(dtype=float)
+
+    if spec.parks:
+        # Put this season's results and the Marcel prior in neutral-park terms.
+        events = events / park_adjustment(df, f"pf_ytd_{stat}", params)
+        prior = prior / park_adjustment(df, f"pf_hist_{stat}", params)
 
     if spec.use_xwoba and stat == "woba":
         # xwOBA reflects contact quality, which is less noisy than results.
+        # It is computed without regard to park, so it needs no park adjustment.
         w = params["xwoba_weight"]
         events = (1 - w) * events + w * df["xwoba_num_ytd"].to_numpy(dtype=float)
 
-    prior = df[f"marcel_{stat}"].to_numpy(dtype=float)
     if spec.environment:
         factor = df[f"{stat}_factor"].to_numpy(dtype=float)
         prior = prior * (1 + params["environment_weight"] * (factor - 1))
@@ -107,7 +126,12 @@ def predict(df: pd.DataFrame, stat: str, params: dict[str, float], spec: ModelSp
         )
 
     strength = prior_strength(df, params, spec)
-    return (events + strength * prior) / (trials + strength)
+    forecast = (events + strength * prior) / (trials + strength)
+
+    if spec.parks:
+        # Back from neutral terms to the parks on the team's remaining schedule.
+        forecast = forecast * park_adjustment(df, f"pf_ros_{stat}", params)
+    return forecast
 
 
 def marcel_reliability(df: pd.DataFrame) -> np.ndarray:

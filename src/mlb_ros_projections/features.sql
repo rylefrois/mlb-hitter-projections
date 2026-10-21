@@ -17,6 +17,7 @@ SELECT
     stand,
     p_throws,
     home_team,
+    away_team,
     CASE WHEN inning_topbot = 'Top' THEN away_team ELSE home_team END AS bat_team,
     events,
     events IN ('strikeout', 'strikeout_double_play') AS is_k,

@@ -21,6 +21,8 @@ def one_row(**overrides):
         "marcel_weighted_pa": 0.0,
         "k_rate_factor": 1.0, "ubb_rate_factor": 1.0, "woba_factor": 1.0,
         "pa_ytd_share": 1.0,
+        **{f"pf_{when}_{stat}": 1.0
+           for when in ("ytd", "hist", "ros") for stat in ("k_rate", "ubb_rate", "woba")},
     }
     return pd.DataFrame([{**row, **overrides}])
 
@@ -74,6 +76,30 @@ def test_playing_time_share_above_one_counts_as_full_time():
     params = {"strength": 1e9, "shift_no_history": 0.0, "shift_part_time": 0.20}
     pred = predict(one_row(pa_ytd_share=1.3), "k_rate", params, spec)[0]
     assert pred == pytest.approx(0.20)
+
+
+def test_parks_neutralize_inputs_then_apply_remaining_schedule():
+    spec = ModelSpec(parks=True)
+    params = {"strength": 100, "park_weight": 1.0}
+    # 30 K in 100 PA at a park that inflates K by 50% = 20 K in neutral terms.
+    # Neutral forecast (20 + 100 * 0.20) / 200 = 0.20; remaining schedule +10%.
+    df = one_row(pf_ytd_k_rate=1.5, pf_ros_k_rate=1.1)
+    assert predict(df, "k_rate", params, spec)[0] == pytest.approx(0.22)
+
+
+def test_park_weight_zero_ignores_parks():
+    spec = ModelSpec(parks=True)
+    df = one_row(pf_ytd_k_rate=1.5, pf_hist_k_rate=0.8, pf_ros_k_rate=1.1)
+    with_parks_off = predict(df, "k_rate", {"strength": 100, "park_weight": 0.0}, spec)
+    no_parks = predict(df, "k_rate", {"strength": 100}, BASIC)
+    assert with_parks_off[0] == pytest.approx(no_parks[0])
+
+
+def test_xwoba_part_of_woba_is_not_park_adjusted():
+    spec = ModelSpec(parks=True, use_xwoba=True)
+    params = {"strength": 1e-9, "park_weight": 1.0, "xwoba_weight": 1.0}  # all xwOBA, no prior
+    df = one_row(pf_ytd_woba=1.2)
+    assert predict(df, "woba", params, spec)[0] == pytest.approx(27.0 / 90)
 
 
 def test_fit_recovers_known_prior_strength():
