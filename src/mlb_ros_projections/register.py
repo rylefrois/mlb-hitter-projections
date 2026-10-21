@@ -19,7 +19,7 @@ REGISTER_URL = "https://github.com/chadwickbureau/register/archive/refs/heads/ma
 PEOPLE_PATH = RAW_DIR / "people.parquet"
 
 COLUMNS = [
-    "key_mlbam", "key_fangraphs", "key_bbref", "name_first", "name_last",
+    "key_mlbam", "key_fangraphs", "key_bbref", "name_first", "name_last", "name_suffix",
     "birth_year", "birth_month", "birth_day", "mlb_played_first", "mlb_played_last",
 ]
 

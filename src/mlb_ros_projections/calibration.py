@@ -12,9 +12,13 @@ from scipy.stats import norm
 
 from mlb_ros_projections.backtest import KEYS, REPORTS_DIR, STATS, load_targets
 from mlb_ros_projections.build_db import DB_PATH
-from mlb_ros_projections.models import MODEL_SPECS, forward_chain, load_model_inputs
+from mlb_ros_projections.models import (
+    FINAL_MODEL,
+    MODEL_SPECS,
+    forward_chain,
+    load_model_inputs,
+)
 
-FINAL_MODEL = "eb_park"
 LEVELS = [0.5, 0.8, 0.95]
 
 

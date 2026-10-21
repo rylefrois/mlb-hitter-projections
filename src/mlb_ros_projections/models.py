@@ -49,6 +49,9 @@ class ModelSpec:
     parks: bool = False           # neutralize inputs for park, then apply remaining schedule
 
 
+# The version used for forecast ranges, calibration, and the app.
+FINAL_MODEL = "eb_park"
+
 MODEL_SPECS = {
     "eb_basic": ModelSpec(),
     "eb_history": ModelSpec(history_prior=True),
@@ -161,15 +164,31 @@ def predictive_sd(
     The luck part uses the PA the hitter actually had left, so the range is for
     "the hitter's next N PA". Playing time itself is not forecast.
     """
-    if stat == "woba":
-        per_pa_var = df["prev_woba_pa_var"].to_numpy(dtype=float)
-    else:
-        per_pa_var = forecast * (1 - forecast)  # binomial variance of one PA
-    _, trials_col = YTD_COLUMNS[stat]
-    evidence = df[trials_col].to_numpy(dtype=float) + prior_strength(df, params, spec)
     remaining = df[STATS[stat]].to_numpy(dtype=float)
-    with np.errstate(divide="ignore"):  # no PA left: an infinitely wide range, never scored
-        return np.sqrt(per_pa_var / evidence + per_pa_var / remaining)
+    return sd_from_parts(
+        per_pa_variance(df, stat, forecast), talent_evidence(df, stat, params, spec), remaining
+    )
+
+
+def per_pa_variance(df: pd.DataFrame, stat: str, forecast: np.ndarray) -> np.ndarray:
+    """How much one PA's outcome varies for this stat."""
+    if stat == "woba":
+        return df["prev_woba_pa_var"].to_numpy(dtype=float)
+    return forecast * (1 - forecast)  # binomial variance of one PA
+
+
+def talent_evidence(
+    df: pd.DataFrame, stat: str, params: dict[str, float], spec: ModelSpec
+) -> np.ndarray:
+    """PA of evidence behind the talent estimate: this season's PA plus the prior's strength."""
+    _, trials_col = YTD_COLUMNS[stat]
+    return df[trials_col].to_numpy(dtype=float) + prior_strength(df, params, spec)
+
+
+def sd_from_parts(per_pa_var, evidence, remaining_pa, scale=1.0):
+    """Range SD from its parts: talent uncertainty plus luck over `remaining_pa`."""
+    with np.errstate(divide="ignore"):  # no PA left: an infinitely wide range
+        return scale * np.sqrt(per_pa_var / evidence + per_pa_var / remaining_pa)
 
 
 def fit_interval_scale(
@@ -244,6 +263,10 @@ def forward_chain(
             forecast[stat] = predict(test, stat, params, spec)
             forecast[f"{stat}_sd_raw"] = predictive_sd(test, stat, forecast[stat], params, spec)
             forecast[f"{stat}_sd"] = scale * forecast[f"{stat}_sd_raw"]
+            # The parts behind the range, so it can be recomputed for any number of PA.
+            forecast[f"{stat}_per_pa_var"] = per_pa_variance(test, stat, forecast[stat])
+            forecast[f"{stat}_evidence"] = talent_evidence(test, stat, params, spec)
+            forecast[f"{stat}_interval_scale"] = scale
             fitted.append({"season": season, "stat": stat, "train_rows": len(train), **params,
                            "interval_scale": scale})
         forecasts.append(forecast)

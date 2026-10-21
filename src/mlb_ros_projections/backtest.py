@@ -180,7 +180,7 @@ def print_table(results: pd.DataFrame, by: str | None = None) -> None:
 
 def main() -> None:
     # Imported here because models.py imports this module's scoring rules.
-    from mlb_ros_projections.models import model_forecasts
+    from mlb_ros_projections.models import FINAL_MODEL, model_forecasts
 
     con = duckdb.connect(str(DB_PATH), read_only=True)
     targets = load_targets(con)
@@ -202,8 +202,8 @@ def main() -> None:
         [p.assign(model=name) for name, p in params.items()], ignore_index=True
     )
     all_params.to_csv(REPORTS_DIR / "model_params.csv", index=False)
-    print("\nFitted parameters (eb_park), by forecast season:")
-    final = all_params[all_params["model"] == "eb_park"].drop(columns="model")
+    print(f"\nFitted parameters ({FINAL_MODEL}), by forecast season:")
+    final = all_params[all_params["model"] == FINAL_MODEL].drop(columns="model")
     print(final.dropna(axis=1, how="all").round(3).to_string(index=False))
 
 

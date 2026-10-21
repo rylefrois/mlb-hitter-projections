@@ -96,16 +96,16 @@ GROUP BY s.season, s.asof_date, p.batter;
 -- Average park factor over the hitter's team's remaining schedule. The
 -- schedule is published before the season, so this is known at forecast
 -- time. The hitter's team is the one he last batted for before the date.
+CREATE OR REPLACE TABLE batter_team_at_date AS
+SELECT s.season, s.asof_date, p.batter, arg_max(p.bat_team, p.game_date) AS team
+FROM snapshot_dates AS s
+JOIN pa AS p
+  ON p.season = s.season
+ AND p.game_date < s.asof_date
+GROUP BY s.season, s.asof_date, p.batter;
+
 CREATE OR REPLACE TABLE park_exposure_ros AS
-WITH team_at_date AS (
-    SELECT s.season, s.asof_date, p.batter, arg_max(p.bat_team, p.game_date) AS team
-    FROM snapshot_dates AS s
-    JOIN pa AS p
-      ON p.season = s.season
-     AND p.game_date < s.asof_date
-    GROUP BY s.season, s.asof_date, p.batter
-),
-games AS (
+WITH games AS (
     SELECT DISTINCT season, game_pk, game_date, home_team, away_team FROM pa
 ),
 team_remaining AS (
@@ -129,7 +129,7 @@ team_remaining AS (
     GROUP BY s.season, s.asof_date, t.team
 )
 SELECT d.season, d.asof_date, d.batter, r.pf_ros_k_rate, r.pf_ros_ubb_rate, r.pf_ros_woba
-FROM team_at_date AS d
+FROM batter_team_at_date AS d
 JOIN team_remaining AS r USING (season, asof_date, team);
 
 
