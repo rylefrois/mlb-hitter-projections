@@ -45,7 +45,6 @@ def load_forecasts() -> pd.DataFrame:
     with duckdb.connect(str(DB_PATH), read_only=True) as con:
         df = con.execute("SELECT * FROM app_forecasts").df()
     df["asof_date"] = pd.to_datetime(df["asof_date"]).dt.date
-    df["label"] = df["name"] + " (" + df["team"] + ")"
     return df
 
 
@@ -69,6 +68,9 @@ def ranges(row: pd.Series, stat: str, remaining_pa: int) -> dict[float, tuple[fl
 
 def season_chart(history: pd.DataFrame, stat: str) -> alt.Chart:
     """Forecast with its 80% range across the season, against the baselines and outcomes."""
+    # Tick only at the forecast dates, so each date is labeled exactly once.
+    ticks = [alt.DateTime(year=d.year, month=d.month, date=d.day) for d in history["asof_date"]]
+    x = alt.X("date:T", title="Forecast date", axis=alt.Axis(values=ticks, format="%b %-d"))
     rows = []
     for _, r in history.iterrows():
         lo, hi = ranges(r, stat, int(r["pa_ros"]) or 1)[0.8]
@@ -87,12 +89,12 @@ def season_chart(history: pd.DataFrame, stat: str) -> alt.Chart:
     ), legend=alt.Legend(orient="bottom"))
 
     band = alt.Chart(data).mark_area(opacity=0.18, color="#2563eb").encode(
-        x=alt.X("date:T", title="Forecast date", axis=alt.Axis(format="%b 1")),
+        x=x,
         y=alt.Y("lower:Q", title=STATS[stat]["label"], axis=alt.Axis(format=axis_format)),
         y2="upper:Q",
     )
     lines = alt.Chart(long).mark_line(point=True).encode(
-        x="date:T",
+        x=x,
         y=alt.Y("value:Q", scale=alt.Scale(zero=False)),
         color=color,
         strokeDash=alt.condition(
@@ -104,17 +106,45 @@ def season_chart(history: pd.DataFrame, stat: str) -> alt.Chart:
     return (band + lines).properties(height=340)
 
 
+ALL_TEAMS = "All teams"
+
+
+def hitter_options(season_df: pd.DataFrame, team: str) -> dict[int, str]:
+    """Hitters to choose from, as {batter id: display name}, most playing time first.
+
+    A hitter traded midseason is listed under every team they played for, and
+    always shows their full season. Duplicate names get their team added.
+    """
+    if team != ALL_TEAMS:
+        on_team = season_df.loc[season_df["team"] == team, "batter"].unique()
+        season_df = season_df[season_df["batter"].isin(on_team)]
+    hitters = (
+        season_df.sort_values("asof_date")
+        .groupby("batter")
+        .agg(name=("name", "first"), team=("team", "last"),
+             pa_ytd=("pa_ytd", "first"), pa_ros=("pa_ros", "first"))
+    )
+    hitters["total_pa"] = hitters["pa_ytd"] + hitters["pa_ros"]
+    hitters = hitters.sort_values("total_pa", ascending=False)
+    duplicate = hitters["name"].duplicated(keep=False)
+    hitters["display"] = hitters["name"].where(
+        ~duplicate, hitters["name"] + " (" + hitters["team"] + ")"
+    )
+    return hitters["display"].to_dict()
+
+
 def player_tab(df: pd.DataFrame, season: int, stat: str) -> None:
     season_df = df[df["season"] == season]
-    # Most-used hitters first, so regulars are easy to find.
-    order = (season_df.groupby("label")[["pa_ytd", "pa_ros"]].first().sum(axis=1)
-             .sort_values(ascending=False).index.tolist())
-    left, right = st.columns([2, 1])
-    label = left.selectbox("Hitter", order, help="Type to search. Sorted by playing time.")
-    history = season_df[season_df["label"] == label].sort_values("asof_date")
+    teams = sorted(season_df["team"].dropna().unique())
+    team_col, hitter_col, date_col = st.columns([1, 2, 1])
+    team = team_col.selectbox("Team", [ALL_TEAMS, *teams])
+    options = hitter_options(season_df, team)
+    batter = hitter_col.selectbox("Hitter", list(options), format_func=options.get,
+                                  help="Type to search. Sorted by playing time.")
+    history = season_df[season_df["batter"] == batter].sort_values("asof_date")
     dates = history["asof_date"].tolist()
-    asof = right.select_slider("Forecast date", options=dates, value=dates[0],
-                               format_func=lambda d: d.strftime("%b %-d"))
+    asof = date_col.select_slider("Forecast date", options=dates, value=dates[0],
+                                  format_func=lambda d: d.strftime("%b %-d"))
     row = history[history["asof_date"] == asof].iloc[0]
 
     st.subheader(f"{row['name']} · {row['team']} · age {int(row['age'])}")
@@ -185,7 +215,8 @@ def league_tab(df: pd.DataFrame, season: int, stat: str) -> None:
                "Compare the forecast and the season-to-date line with what happened next.")
     top = day.reindex(day["change"].abs().sort_values(ascending=False).index).head(25)
     table = pd.DataFrame({
-        "Hitter": top["label"],
+        "Hitter": top["name"],
+        "Team": top["team"],
         "PA so far": top["pa_ytd"].astype(int),
         "Season to date": top[f"ytd_{stat}"].map(lambda v: fmt(stat, v)),
         "Marcel": top[f"marcel_{stat}"].map(lambda v: fmt(stat, v)),
