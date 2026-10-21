@@ -45,12 +45,16 @@ class ModelSpec:
     history_prior: bool = False   # prior strength depends on how much history backs Marcel
     use_xwoba: bool = False       # wOBA forecasts also use this season's xwOBA
     environment: bool = False     # shift the prior when the league environment changes
+    playing_time_prior: bool = False  # shift the prior for hitters with little history or PA
 
 
 MODEL_SPECS = {
     "eb_basic": ModelSpec(),
     "eb_history": ModelSpec(history_prior=True),
     "eb_full": ModelSpec(history_prior=True, use_xwoba=True, environment=True),
+    "eb_playing_time": ModelSpec(
+        history_prior=True, use_xwoba=True, environment=True, playing_time_prior=True
+    ),
 }
 
 
@@ -70,6 +74,10 @@ def param_bounds(stat: str, spec: ModelSpec) -> dict[str, tuple[float, float]]:
         bounds["xwoba_weight"] = (0.0, 1.0)
     if spec.environment:
         bounds["environment_weight"] = (0.0, 1.5)
+    if spec.playing_time_prior:
+        # Relative shifts to the prior; the sign is learned, not assumed.
+        bounds["shift_no_history"] = (-0.5, 0.5)
+        bounds["shift_part_time"] = (-0.5, 0.5)
     return bounds
 
 
@@ -88,18 +96,32 @@ def predict(df: pd.DataFrame, stat: str, params: dict[str, float], spec: ModelSp
         factor = df[f"{stat}_factor"].to_numpy(dtype=float)
         prior = prior * (1 + params["environment_weight"] * (factor - 1))
 
+    if spec.playing_time_prior:
+        # Marcel regresses everyone toward league average, but hitters with little
+        # history or playing time are mostly bench players and call-ups, who are
+        # below average as a group. Shift their starting point accordingly.
+        no_history = 1 - marcel_reliability(df)
+        part_time = 1 - df["pa_ytd_share"].clip(upper=1).to_numpy(dtype=float)
+        prior = prior * (
+            1 + params["shift_no_history"] * no_history + params["shift_part_time"] * part_time
+        )
+
     strength = prior_strength(df, params, spec)
     return (events + strength * prior) / (trials + strength)
+
+
+def marcel_reliability(df: pd.DataFrame) -> np.ndarray:
+    """How much history backs Marcel: 0 for a rookie, about 0.85 for a regular."""
+    wpa = df["marcel_weighted_pa"].to_numpy(dtype=float)
+    return wpa / (wpa + MARCEL_REGRESSION_PA)
 
 
 def prior_strength(df: pd.DataFrame, params: dict[str, float], spec: ModelSpec) -> np.ndarray:
     """How many PA of evidence the Marcel prior is worth, for each row."""
     if not spec.history_prior:
         return np.full(len(df), params["strength"])
-    wpa = df["marcel_weighted_pa"].to_numpy(dtype=float)
-    reliability = wpa / (wpa + MARCEL_REGRESSION_PA)
     lo, hi = params["strength_no_history"], params["strength_full_history"]
-    return lo + (hi - lo) * reliability
+    return lo + (hi - lo) * marcel_reliability(df)
 
 
 def predictive_sd(

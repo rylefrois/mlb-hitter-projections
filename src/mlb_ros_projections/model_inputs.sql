@@ -7,6 +7,8 @@ CREATE OR REPLACE TABLE league_snapshot AS
 SELECT
     season,
     asof_date,
+    -- PA an everyday player would have by now: 30 teams x 9 lineup spots.
+    sum(pa_ytd) / 270.0                 AS full_time_pa_ytd,
     sum(k_ytd)   / sum(pa_ytd)          AS k_rate,
     sum(ubb_ytd) / sum(pa_ytd)          AS ubb_rate,
     sum(woba_num_ytd) / sum(woba_denom_ytd) AS woba
@@ -58,6 +60,10 @@ SELECT
     s.woba_num_ytd,
     s.xwoba_num_ytd,
 
+    -- Share of an everyday player's PA so far: about 1 for a regular, lower for
+    -- bench players and recent call-ups. Teams give PA to hitters they believe in.
+    coalesce(s.pa_ytd / ls.full_time_pa_ytd, 0) AS pa_ytd_share,
+
     m.marcel_weighted_pa,
     m.marcel_k_rate,
     m.marcel_ubb_rate,
@@ -78,4 +84,5 @@ SELECT
 FROM batter_snapshot AS s
 JOIN marcel AS m USING (season, batter)
 LEFT JOIN environment AS e USING (season, asof_date)
+LEFT JOIN league_snapshot AS ls USING (season, asof_date)
 LEFT JOIN woba_pa_variance AS v ON v.season = s.season - 1;

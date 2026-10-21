@@ -20,6 +20,7 @@ def one_row(**overrides):
         "marcel_k_rate": 0.20, "marcel_ubb_rate": 0.08, "marcel_woba": 0.320,
         "marcel_weighted_pa": 0.0,
         "k_rate_factor": 1.0, "ubb_rate_factor": 1.0, "woba_factor": 1.0,
+        "pa_ytd_share": 1.0,
     }
     return pd.DataFrame([{**row, **overrides}])
 
@@ -55,6 +56,24 @@ def test_environment_shifts_the_prior():
     params = {"strength": 1e9, "environment_weight": 1.0}  # forecast is all prior
     pred = predict(one_row(k_rate_factor=1.1), "k_rate", params, spec)
     assert pred[0] == pytest.approx(0.22)
+
+
+def test_playing_time_shifts_prior_for_fringe_hitters():
+    spec = ModelSpec(playing_time_prior=True)
+    params = {"strength": 1e9, "shift_no_history": 0.10, "shift_part_time": 0.20}  # all prior
+    # Regular with full history: wpa so large reliability is ~1, full-time share.
+    regular = predict(one_row(marcel_weighted_pa=1e9), "k_rate", params, spec)[0]
+    # Rookie playing half the time: 0.20 * (1 + 0.10 * 1 + 0.20 * 0.5) = 0.24.
+    rookie = predict(one_row(marcel_weighted_pa=0, pa_ytd_share=0.5), "k_rate", params, spec)[0]
+    assert regular == pytest.approx(0.20)
+    assert rookie == pytest.approx(0.24)
+
+
+def test_playing_time_share_above_one_counts_as_full_time():
+    spec = ModelSpec(playing_time_prior=True)
+    params = {"strength": 1e9, "shift_no_history": 0.0, "shift_part_time": 0.20}
+    pred = predict(one_row(pa_ytd_share=1.3), "k_rate", params, spec)[0]
+    assert pred == pytest.approx(0.20)
 
 
 def test_fit_recovers_known_prior_strength():

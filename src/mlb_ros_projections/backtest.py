@@ -202,9 +202,9 @@ def main() -> None:
         [p.assign(model=name) for name, p in params.items()], ignore_index=True
     )
     all_params.to_csv(REPORTS_DIR / "model_params.csv", index=False)
-    print("\nFitted parameters (eb_full), by forecast season:")
-    eb_full = all_params[all_params["model"] == "eb_full"].drop(columns="model")
-    print(eb_full.dropna(axis=1, how="all").round(3).to_string(index=False))
+    print("\nFitted parameters (eb_playing_time), by forecast season:")
+    final = all_params[all_params["model"] == "eb_playing_time"].drop(columns="model")
+    print(final.dropna(axis=1, how="all").round(3).to_string(index=False))
 
 
 if __name__ == "__main__":
