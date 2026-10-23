@@ -27,7 +27,7 @@ def test_app_renders_every_stat_without_errors(stat):
     app = run_app()
     app.sidebar.radio[0].set_value(stat).run()
     assert not app.exception
-    assert len(app.metric) >= 7  # player tab (4) + league tab (3)
+    assert len(app.metric) >= 8  # player tab (4) + hitters-to-watch track record (4)
 
 
 def test_app_handles_a_late_season_date_and_short_range():
@@ -90,3 +90,20 @@ def test_switching_seasons_after_moving_the_date_slider(season):
     app.select_slider[0].set_value(app.select_slider[0].value).run()
     app.sidebar.selectbox[0].set_value(season).run()
     assert not app.exception
+
+
+def test_hitters_to_watch_can_compare_with_the_preseason_projection():
+    app = run_app()
+    next(r for r in app.radio if r.label == "Compare the forecast to").set_value("marcel").run()
+    assert not app.exception
+    lists = [df for df in app.dataframe if "Why" in df.value.columns]
+    assert len(lists) == 2
+    assert "Chance to beat preseason" in lists[0].value.columns
+    assert all(len(df.value) == 10 for df in lists)
+
+
+def test_model_performance_shows_accuracy_by_date_and_sample_size():
+    app = run_app()
+    indexes = [list(df.value.index) for df in app.dataframe]
+    assert ["May 1", "Jun 1", "Jul 1", "Aug 1", "Sep 1"] in indexes
+    assert any(index[0] == "1-49 PA so far" for index in indexes if index)

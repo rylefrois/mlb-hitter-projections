@@ -206,6 +206,36 @@ def player_tab(df: pd.DataFrame, season: int, stat: str) -> None:
 """)
 
 
+# Wording for each comparison in the Hitters to watch tab.
+VIEWS = {
+    "ytd": {
+        "option": "Season to date",
+        "intro": "Whose numbers so far misstate their real level? **Slumps to ignore** are "
+                 "hitters likely to do better from here; **hot starts to doubt** are likely "
+                 "to do worse.",
+        "up": "Slumps to ignore", "down": "Hot starts to doubt",
+        "up_chance": "Chance to improve", "down_chance": "Chance to decline",
+        "up_result": "Slumps that improved", "down_result": "Hot starts that declined",
+        "naive": "the 10 worst (or best) hitters so far. Bad starts improve partly by "
+                 "regression to the mean alone",
+        "beat": "beating their season-to-date number",
+    },
+    "marcel": {
+        "option": "Preseason projection",
+        "intro": "Whose outlook has changed since spring? **Outlooks raised** are hitters "
+                 "likely to beat their preseason projection from here; **outlooks lowered** "
+                 "are likely to fall short of it.",
+        "up": "Outlooks raised", "down": "Outlooks lowered",
+        "up_chance": "Chance to beat preseason", "down_chance": "Chance to fall short",
+        "up_result": "Raised outlooks that beat preseason",
+        "down_result": "Lowered outlooks that fell short",
+        "naive": "the 10 hitters running furthest above (or below) their projection, "
+                 "taking the start at face value",
+        "beat": "beating their preseason projection",
+    },
+}
+
+
 def candidate_table(picks: pd.DataFrame, stat: str, chance_label: str, flip: bool,
                     reveal: bool) -> pd.DataFrame:
     """A ranked list of hitters, formatted for display."""
@@ -215,6 +245,7 @@ def candidate_table(picks: pd.DataFrame, stat: str, chance_label: str, flip: boo
         "Team": picks["team"],
         "PA so far": picks["pa_ytd"].astype(int),
         "So far": picks[f"ytd_{stat}"].map(lambda v: fmt(stat, v)),
+        "Preseason": picks[f"marcel_{stat}"].map(lambda v: fmt(stat, v)),
         "Forecast": picks[stat].map(lambda v: fmt(stat, v)),
         chance_label: chance.map("{:.0%}".format),
         "Why": picks["reasons"],
@@ -229,12 +260,12 @@ def candidate_table(picks: pd.DataFrame, stat: str, chance_label: str, flip: boo
 
 
 def trends_tab(df: pd.DataFrame, season: int, stat: str) -> None:
-    st.markdown(
-        "Which hitters' numbers so far misstate their real level? **Slumps to ignore** are "
-        "hitters likely to do better from here; **hot starts to doubt** are likely to do worse. "
-        "The chance is how often the next N PA should beat the hitter's season-to-date number, "
-        "based on the forecast ranges."
-    )
+    versus = st.radio("Compare the forecast to", list(VIEWS), horizontal=True,
+                      format_func=lambda v: VIEWS[v]["option"], key="trends_versus")
+    view = VIEWS[versus]
+    st.markdown(view["intro"] + " The chance is how likely the next N PA are to come out "
+                "ahead, based on the forecast ranges.")
+
     season_df = df[df["season"] == season]
     dates = sorted(season_df["asof_date"].unique())
     teams = sorted(season_df["team"].dropna().unique())
@@ -256,50 +287,47 @@ def trends_tab(df: pd.DataFrame, season: int, stat: str) -> None:
     reveal = st.toggle("Reveal what happened next", value=False,
                        help="These are past seasons, so you can check the calls.")
 
-    improvers, decliners = rank_candidates(pool, stat, next_pa)
+    up, down = rank_candidates(pool, stat, next_pa, versus=versus)
     left, right = st.columns(2)
-    left.markdown("#### Slumps to ignore")
-    left.dataframe(candidate_table(improvers, stat, "Chance to improve", False, reveal),
+    left.markdown(f"#### {view['up']}")
+    left.dataframe(candidate_table(up, stat, view["up_chance"], False, reveal),
                    hide_index=True, width="stretch")
-    right.markdown("#### Hot starts to doubt")
-    right.dataframe(candidate_table(decliners, stat, "Chance to decline", True, reveal),
+    right.markdown(f"#### {view['down']}")
+    right.dataframe(candidate_table(down, stat, view["down_chance"], True, reveal),
                     hide_index=True, width="stretch")
 
     st.divider()
     st.markdown(f"#### How have these lists done? Every season, as of {asof:%B %-d}")
     st.caption(
         f"All teams, hitters with {min_pa}+ PA so far and 50+ PA left. The naive list is "
-        "simply the 10 worst (or best) hitters so far: bad starts improve partly by "
-        "regression to the mean alone, so the model has to beat it to add anything."
+        f"{view['naive']}, so the model has to beat it to add anything."
     )
     same_date = df[(pd.to_datetime(df["asof_date"]).dt.month == asof.month)
                    & (df["pa_ytd"] >= min_pa)]
-    record = list_track_record(same_date, stat)
-    summary = record.groupby(["list", "method"])[["hit_rate", "avg_actual_change"]].mean()
+    record = list_track_record(same_date, stat, versus=versus)
+    summary = record.groupby(["list", "method"])["hit_rate"].mean()
 
     m1, m2, m3, m4 = st.columns(4)
-    m1.metric("Slumps that improved: model", f"{summary.loc[('improve', 'model'), 'hit_rate']:.0%}")
-    m2.metric("Slumps that improved: naive", f"{summary.loc[('improve', 'naive'), 'hit_rate']:.0%}")
-    m3.metric("Hot starts that declined: model",
-              f"{summary.loc[('decline', 'model'), 'hit_rate']:.0%}")
-    m4.metric("Hot starts that declined: naive",
-              f"{summary.loc[('decline', 'naive'), 'hit_rate']:.0%}")
+    m1.metric(f"{view['up_result']}: model", f"{summary[('improve', 'model')]:.0%}")
+    m2.metric(f"{view['up_result']}: naive", f"{summary[('improve', 'naive')]:.0%}")
+    m3.metric(f"{view['down_result']}: model", f"{summary[('decline', 'model')]:.0%}")
+    m4.metric(f"{view['down_result']}: naive", f"{summary[('decline', 'naive')]:.0%}")
 
     by_season = record.pivot_table(index="season", columns=["list", "method"], values="hit_rate")
-    by_season.columns = [f"{'Slumps' if lst == 'improve' else 'Hot starts'}: {method}"
+    by_season.columns = [f"{view['up'] if lst == 'improve' else view['down']}: {method}"
                          for lst, method in by_season.columns]
     with st.expander("Season by season"):
         st.dataframe(by_season.style.format("{:.0%}"), width="stretch")
 
     st.markdown("#### Are the chances honest?")
-    st.caption("Every hitter on this date in every season, grouped by the predicted chance "
-               "of improving. Points on the dashed line mean the chances were right.")
-    calib = probability_calibration(same_date, stat)
+    st.caption(f"Every hitter on this date in every season, grouped by the predicted chance of "
+               f"{view['beat']}. Points on the dashed line mean the chances were right.")
+    calib = probability_calibration(same_date, stat, versus=versus)
     points = alt.Chart(calib).mark_circle(color="#2563eb").encode(
-        x=alt.X("predicted:Q", title="Predicted chance of improving",
-                scale=alt.Scale(domain=[0, 1]), axis=alt.Axis(format=".0%")),
-        y=alt.Y("actual:Q", title="Share that actually improved",
-                scale=alt.Scale(domain=[0, 1]), axis=alt.Axis(format=".0%")),
+        x=alt.X("predicted:Q", title="Predicted chance", scale=alt.Scale(domain=[0, 1]),
+                axis=alt.Axis(format=".0%")),
+        y=alt.Y("actual:Q", title="Share that did", scale=alt.Scale(domain=[0, 1]),
+                axis=alt.Axis(format=".0%")),
         size=alt.Size("hitters:Q", title="Hitters"),
         tooltip=[alt.Tooltip("predicted:Q", format=".0%"), alt.Tooltip("actual:Q", format=".0%"),
                  "hitters:Q"],
@@ -309,50 +337,16 @@ def trends_tab(df: pd.DataFrame, season: int, stat: str) -> None:
     st.altair_chart((diagonal + points).properties(height=320), width="stretch")
 
 
-def league_tab(df: pd.DataFrame, season: int, stat: str) -> None:
-    season_df = df[df["season"] == season]
-    dates = sorted(season_df["asof_date"].unique())
-    left, right = st.columns(2)
-    asof = left.select_slider("Forecast date", options=dates, value=dates[0],
-                              format_func=lambda d: d.strftime("%b %-d"), key=f"league_date_{season}")
-    min_pa = right.slider("Minimum PA so far", 0, 300, 50, step=10)
-
-    day = season_df[(season_df["asof_date"] == asof) & (season_df["pa_ytd"] >= min_pa)
-                    & (season_df["pa_ros"] >= 50)].copy()
-    if day.empty:
-        st.info("No hitters match these filters.")
-        return
-    day["change"] = day[stat] - day[f"marcel_{stat}"]
-    day["model_error"] = (day[stat] - day[f"actual_{stat}"]).abs()
-    day["ytd_error"] = (day[f"ytd_{stat}"] - day[f"actual_{stat}"]).abs()
-
-    st.markdown(f"#### Biggest moves from Marcel on {asof:%B %-d}")
-    st.caption("Where this season's data moved the forecast most. Was the move right? "
-               "Compare the forecast and the season-to-date line with what happened next.")
-    top = day.reindex(day["change"].abs().sort_values(ascending=False).index).head(25)
-    table = pd.DataFrame({
-        "Hitter": top["name"],
-        "Team": top["team"],
-        "PA so far": top["pa_ytd"].astype(int),
-        "Season to date": top[f"ytd_{stat}"].map(lambda v: fmt(stat, v)),
-        "Marcel": top[f"marcel_{stat}"].map(lambda v: fmt(stat, v)),
-        "Forecast": top[stat].map(lambda v: fmt(stat, v)),
-        "What happened next": top[f"actual_{stat}"].map(lambda v: fmt(stat, v)),
-        "Closer": np.where(top["model_error"] < top["ytd_error"], "Forecast", "Season to date"),
-    })
-    st.dataframe(table, hide_index=True, width="stretch")
-
-    weights = day["woba_denom_ros" if stat == "woba" else "pa_ros"]
-
-    def rmse(col):
-        return np.sqrt(np.average((day[col] - day[f"actual_{stat}"]) ** 2, weights=weights))
-
-    c1, c2, c3 = st.columns(3)
-    c1.metric("Forecast error (RMSE)", fmt(stat, rmse(stat)))
-    c2.metric("Marcel error", fmt(stat, rmse(f"marcel_{stat}")))
-    c3.metric("Season-to-date error", fmt(stat, rmse(f"ytd_{stat}")))
-    st.caption(f"All {len(day)} hitters on this date with at least {min_pa} PA so far and "
-               "50 PA left, weighted by PA left.")
+def accuracy_breakdown(report: str, by: str, stat: str, order: list[str]) -> pd.DataFrame:
+    """RMSE by a breakdown column for the key forecasts, from a saved backtest report."""
+    results = load_report(report)
+    results = results[results["stat"] == stat]
+    table = results.pivot(index=by, columns="forecast", values="rmse")
+    table["noise_floor"] = results.groupby(by)["noise_floor"].first()
+    columns = ["season_to_date", "marcel", FINAL_MODEL, "noise_floor"]
+    table = table.reindex(order)[columns]
+    table.columns = [FORECAST_NAMES.get(c, "Noise floor") for c in columns]
+    return table
 
 
 def performance_tab(stat: str) -> None:
@@ -368,6 +362,19 @@ def performance_tab(stat: str) -> None:
     table.index = [FORECAST_NAMES.get(i, "Noise floor") for i in table.index]
     table = table[list(STATS)].rename(columns={s: STATS[s]["label"] for s in STATS})
     st.dataframe(table.style.format("{:.4f}"), width="stretch")
+
+    st.markdown(f"#### {STATS[stat]['label']} accuracy by forecast date and sample size")
+    st.caption("Same scoring, split up. Early in the season, this season's numbers are mostly "
+               "noise; the model leans on the track record until they settle down.")
+    left, right = st.columns(2)
+    by_month = accuracy_breakdown("backtest_asof_month.csv", "asof_month", stat,
+                                  ["May", "Jun", "Jul", "Aug", "Sep"])
+    by_month.index = [f"{m} 1" for m in by_month.index]
+    left.dataframe(by_month.style.format("{:.4f}"), width="stretch")
+    by_pa = accuracy_breakdown("backtest_pa_ytd_bucket.csv", "pa_ytd_bucket", stat,
+                               ["1-49", "50-149", "150-299", "300+"])
+    by_pa.index = [f"{b} PA so far" for b in by_pa.index]
+    right.dataframe(by_pa.style.format("{:.4f}"), width="stretch")
 
     st.markdown("#### Are the ranges honest?")
     st.caption(f"Share of actual results inside each range ({FORECAST_NAMES[FINAL_MODEL]}). "
@@ -394,15 +401,11 @@ def main() -> None:
         season = st.selectbox("Season", sorted(df["season"].unique(), reverse=True))
         stat = st.radio("Stat", list(STATS), format_func=lambda s: STATS[s]["label"])
 
-    player, trends, league, performance = st.tabs(
-        ["Player", "Slumps & hot starts", "League", "Model performance"]
-    )
+    player, trends, performance = st.tabs(["Player", "Hitters to watch", "Model performance"])
     with player:
         player_tab(df, season, stat)
     with trends:
         trends_tab(df, season, stat)
-    with league:
-        league_tab(df, season, stat)
     with performance:
         performance_tab(stat)
 

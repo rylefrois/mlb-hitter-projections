@@ -17,6 +17,8 @@ def hitter(**overrides):
         "ytd_xwoba": 0.320,
         "pf_ytd_woba": 1.0, "pf_ros_woba": 1.0, "pf_ytd_k_rate": 1.0, "pf_ros_k_rate": 1.0,
         "pf_ytd_ubb_rate": 1.0, "pf_ros_ubb_rate": 1.0,
+        "pf_hist_woba": 1.0, "pf_hist_k_rate": 1.0, "pf_hist_ubb_rate": 1.0,
+        "pa_ytd_share": 1.0,
     }
     for stat, value in {"woba": 0.320, "k_rate": 0.22, "ubb_rate": 0.08}.items():
         row |= {
@@ -82,3 +84,35 @@ def test_track_record_scores_model_and_naive_lists():
 def test_hitters_with_too_few_pa_left_are_not_scored():
     df = pd.DataFrame([hitter(pa_ros=20, woba_denom_ros=18)])
     assert probability_calibration(df, "woba").empty
+
+
+def test_versus_preseason_compares_the_forecast_with_marcel():
+    # Forecast above Marcel: likely to beat the preseason projection,
+    # even though it's below this season's hot start.
+    df = pd.DataFrame([hitter(woba=0.350, marcel_woba=0.320, ytd_woba=0.400)])
+    assert improvement_probability(df, "woba", 300, versus="marcel")[0] > 0.5
+    assert improvement_probability(df, "woba", 300, versus="ytd")[0] < 0.5
+
+
+def test_preseason_reasons_describe_the_start_and_role():
+    row = pd.Series(hitter(ytd_woba=0.380, marcel_woba=0.320, ytd_xwoba=0.360,
+                           pa_ytd_share=0.3, pf_hist_woba=0.95, pf_ros_woba=1.03))
+    text = reasons(row, "woba", versus="marcel")
+    assert "strong start" in text
+    assert "contact quality above track record" in text
+    assert "part-time role" in text
+    assert "easier parks ahead" in text
+
+
+def test_preseason_naive_list_takes_hot_starts_at_face_value():
+    # Hitter 2 is running furthest above Marcel, so the naive list picks it; it
+    # then falls back below Marcel. Hitter 1's smaller gain is backed by the
+    # model and holds up.
+    df = pd.DataFrame([
+        hitter(batter=1, marcel_woba=0.320, ytd_woba=0.350, woba=0.340, actual_woba=0.345),
+        hitter(batter=2, marcel_woba=0.320, ytd_woba=0.420, woba=0.322, actual_woba=0.300),
+        hitter(batter=3),
+    ])
+    result = list_track_record(df, "woba", top_n=1, versus="marcel").set_index(["list", "method"])
+    assert result.loc[("improve", "model"), "hit_rate"] == 1.0
+    assert result.loc[("improve", "naive"), "hit_rate"] == 0.0

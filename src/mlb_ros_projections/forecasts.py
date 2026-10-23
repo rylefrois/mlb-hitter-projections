@@ -37,7 +37,7 @@ def build_app_forecasts(con: duckdb.DuckDBPyConnection) -> int:
             i.woba_denom_ros,
             i.pa_ytd_share,
             i.marcel_weighted_pa,
-            i.pf_hist_woba,
+            i.pf_hist_k_rate, i.pf_hist_ubb_rate, i.pf_hist_woba,
             i.pf_ytd_k_rate, i.pf_ytd_ubb_rate, i.pf_ytd_woba,
             i.pf_ros_k_rate, i.pf_ros_ubb_rate, i.pf_ros_woba,
 
