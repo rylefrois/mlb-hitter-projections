@@ -12,8 +12,14 @@ import numpy as np
 import pandas as pd
 import streamlit as st
 
+from mlb_ros_projections.backtest import EVAL_SEASONS
 from mlb_ros_projections.calibration import interval
 from mlb_ros_projections.models import FINAL_MODEL, sd_from_parts
+from mlb_ros_projections.trends import (
+    list_track_record,
+    probability_calibration,
+    rank_candidates,
+)
 
 ROOT = Path(__file__).resolve().parents[1]
 DB_PATH = ROOT / "data" / "mlb.duckdb"
@@ -137,13 +143,17 @@ def player_tab(df: pd.DataFrame, season: int, stat: str) -> None:
     season_df = df[df["season"] == season]
     teams = sorted(season_df["team"].dropna().unique())
     team_col, hitter_col, date_col = st.columns([1, 2, 1])
-    team = team_col.selectbox("Team", [ALL_TEAMS, *teams])
+    # Keys include the season (and team), so these reset when it changes instead of
+    # keeping a value, like a date from another season, that is no longer an option.
+    team = team_col.selectbox("Team", [ALL_TEAMS, *teams], key=f"player_team_{season}")
     options = hitter_options(season_df, team)
     batter = hitter_col.selectbox("Hitter", list(options), format_func=options.get,
+                                  key=f"player_hitter_{season}_{team}",
                                   help="Type to search. Sorted by playing time.")
     history = season_df[season_df["batter"] == batter].sort_values("asof_date")
     dates = history["asof_date"].tolist()
     asof = date_col.select_slider("Forecast date", options=dates, value=dates[0],
+                                  key=f"player_date_{season}_{batter}",
                                   format_func=lambda d: d.strftime("%b %-d"))
     row = history[history["asof_date"] == asof].iloc[0]
 
@@ -196,16 +206,122 @@ def player_tab(df: pd.DataFrame, season: int, stat: str) -> None:
 """)
 
 
+def candidate_table(picks: pd.DataFrame, stat: str, chance_label: str, flip: bool,
+                    reveal: bool) -> pd.DataFrame:
+    """A ranked list of hitters, formatted for display."""
+    chance = 1 - picks["p_improve"] if flip else picks["p_improve"]
+    table = pd.DataFrame({
+        "Hitter": picks["name"],
+        "Team": picks["team"],
+        "PA so far": picks["pa_ytd"].astype(int),
+        "So far": picks[f"ytd_{stat}"].map(lambda v: fmt(stat, v)),
+        "Forecast": picks[stat].map(lambda v: fmt(stat, v)),
+        chance_label: chance.map("{:.0%}".format),
+        "Why": picks["reasons"],
+    })
+    if reveal:
+        # Released or sent down hitters have no outcome to show.
+        table["What happened next"] = [
+            fmt(stat, actual) if pa_left > 0 else "no more PA"
+            for actual, pa_left in zip(picks[f"actual_{stat}"], picks["pa_ros"])
+        ]
+    return table
+
+
+def trends_tab(df: pd.DataFrame, season: int, stat: str) -> None:
+    st.markdown(
+        "Which hitters' numbers so far misstate their real level? **Slumps to ignore** are "
+        "hitters likely to do better from here; **hot starts to doubt** are likely to do worse. "
+        "The chance is how often the next N PA should beat the hitter's season-to-date number, "
+        "based on the forecast ranges."
+    )
+    season_df = df[df["season"] == season]
+    dates = sorted(season_df["asof_date"].unique())
+    teams = sorted(season_df["team"].dropna().unique())
+    c1, c2, c3, c4 = st.columns(4)
+    asof = c1.select_slider("Forecast date", options=dates, value=dates[1] if len(dates) > 1
+                            else dates[0], format_func=lambda d: d.strftime("%b %-d"),
+                            key=f"trends_date_{season}")
+    team = c2.selectbox("Team", [ALL_TEAMS, *teams], key=f"trends_team_{season}")
+    min_pa = c3.slider("Minimum PA so far", 25, 300, 75, step=25, key="trends_min_pa")
+    next_pa = c4.slider("Next N plate appearances", 50, 400, 150, step=25, key="trends_next_pa",
+                        help="Over more PA, luck evens out, so the calls get more confident.")
+
+    pool = season_df[(season_df["asof_date"] == asof) & (season_df["pa_ytd"] >= min_pa)]
+    if team != ALL_TEAMS:
+        pool = pool[pool["team"] == team]
+    if pool.empty:
+        st.info("No hitters match these filters.")
+        return
+    reveal = st.toggle("Reveal what happened next", value=False,
+                       help="These are past seasons, so you can check the calls.")
+
+    improvers, decliners = rank_candidates(pool, stat, next_pa)
+    left, right = st.columns(2)
+    left.markdown("#### Slumps to ignore")
+    left.dataframe(candidate_table(improvers, stat, "Chance to improve", False, reveal),
+                   hide_index=True, width="stretch")
+    right.markdown("#### Hot starts to doubt")
+    right.dataframe(candidate_table(decliners, stat, "Chance to decline", True, reveal),
+                    hide_index=True, width="stretch")
+
+    st.divider()
+    st.markdown(f"#### How have these lists done? Every season, as of {asof:%B %-d}")
+    st.caption(
+        f"All teams, hitters with {min_pa}+ PA so far and 50+ PA left. The naive list is "
+        "simply the 10 worst (or best) hitters so far: bad starts improve partly by "
+        "regression to the mean alone, so the model has to beat it to add anything."
+    )
+    same_date = df[(pd.to_datetime(df["asof_date"]).dt.month == asof.month)
+                   & (df["pa_ytd"] >= min_pa)]
+    record = list_track_record(same_date, stat)
+    summary = record.groupby(["list", "method"])[["hit_rate", "avg_actual_change"]].mean()
+
+    m1, m2, m3, m4 = st.columns(4)
+    m1.metric("Slumps that improved: model", f"{summary.loc[('improve', 'model'), 'hit_rate']:.0%}")
+    m2.metric("Slumps that improved: naive", f"{summary.loc[('improve', 'naive'), 'hit_rate']:.0%}")
+    m3.metric("Hot starts that declined: model",
+              f"{summary.loc[('decline', 'model'), 'hit_rate']:.0%}")
+    m4.metric("Hot starts that declined: naive",
+              f"{summary.loc[('decline', 'naive'), 'hit_rate']:.0%}")
+
+    by_season = record.pivot_table(index="season", columns=["list", "method"], values="hit_rate")
+    by_season.columns = [f"{'Slumps' if lst == 'improve' else 'Hot starts'}: {method}"
+                         for lst, method in by_season.columns]
+    with st.expander("Season by season"):
+        st.dataframe(by_season.style.format("{:.0%}"), width="stretch")
+
+    st.markdown("#### Are the chances honest?")
+    st.caption("Every hitter on this date in every season, grouped by the predicted chance "
+               "of improving. Points on the dashed line mean the chances were right.")
+    calib = probability_calibration(same_date, stat)
+    points = alt.Chart(calib).mark_circle(color="#2563eb").encode(
+        x=alt.X("predicted:Q", title="Predicted chance of improving",
+                scale=alt.Scale(domain=[0, 1]), axis=alt.Axis(format=".0%")),
+        y=alt.Y("actual:Q", title="Share that actually improved",
+                scale=alt.Scale(domain=[0, 1]), axis=alt.Axis(format=".0%")),
+        size=alt.Size("hitters:Q", title="Hitters"),
+        tooltip=[alt.Tooltip("predicted:Q", format=".0%"), alt.Tooltip("actual:Q", format=".0%"),
+                 "hitters:Q"],
+    )
+    diagonal = alt.Chart(pd.DataFrame({"x": [0, 1], "y": [0, 1]})).mark_line(
+        strokeDash=[4, 4], color="#9ca3af").encode(x="x:Q", y="y:Q")
+    st.altair_chart((diagonal + points).properties(height=320), width="stretch")
+
+
 def league_tab(df: pd.DataFrame, season: int, stat: str) -> None:
     season_df = df[df["season"] == season]
     dates = sorted(season_df["asof_date"].unique())
     left, right = st.columns(2)
     asof = left.select_slider("Forecast date", options=dates, value=dates[0],
-                              format_func=lambda d: d.strftime("%b %-d"), key="league_date")
+                              format_func=lambda d: d.strftime("%b %-d"), key=f"league_date_{season}")
     min_pa = right.slider("Minimum PA so far", 0, 300, 50, step=10)
 
     day = season_df[(season_df["asof_date"] == asof) & (season_df["pa_ytd"] >= min_pa)
                     & (season_df["pa_ros"] >= 50)].copy()
+    if day.empty:
+        st.info("No hitters match these filters.")
+        return
     day["change"] = day[stat] - day[f"marcel_{stat}"]
     day["model_error"] = (day[stat] - day[f"actual_{stat}"]).abs()
     day["ytd_error"] = (day[f"ytd_{stat}"] - day[f"actual_{stat}"]).abs()
@@ -240,7 +356,8 @@ def league_tab(df: pd.DataFrame, season: int, stat: str) -> None:
 
 
 def performance_tab(stat: str) -> None:
-    st.markdown("#### Accuracy across 2018–2024 (2020 excluded)")
+    first, last = min(EVAL_SEASONS), max(EVAL_SEASONS)
+    st.markdown(f"#### Accuracy across {first}–{last} (2020 excluded)")
     st.caption("RMSE of rest-of-season forecasts, weighted by PA left. Lower is better. "
                "The noise floor is the error even perfect knowledge of talent would leave.")
     overall = load_report("backtest_overall.csv")
@@ -277,9 +394,13 @@ def main() -> None:
         season = st.selectbox("Season", sorted(df["season"].unique(), reverse=True))
         stat = st.radio("Stat", list(STATS), format_func=lambda s: STATS[s]["label"])
 
-    player, league, performance = st.tabs(["Player", "League", "Model performance"])
+    player, trends, league, performance = st.tabs(
+        ["Player", "Slumps & hot starts", "League", "Model performance"]
+    )
     with player:
         player_tab(df, season, stat)
+    with trends:
+        trends_tab(df, season, stat)
     with league:
         league_tab(df, season, stat)
     with performance:

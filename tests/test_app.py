@@ -11,28 +11,31 @@ streamlit_testing = pytest.importorskip("streamlit.testing.v1")
 pytestmark = pytest.mark.skipif(not DB_PATH.exists(), reason="needs the built database")
 
 
-@pytest.mark.parametrize("stat", ["woba", "k_rate", "ubb_rate"])
-def test_app_renders_every_stat_without_errors(stat):
+# Tests pin a season so they don't depend on which season is newest.
+SEASON = 2024
+
+
+def run_app():
     app = streamlit_testing.AppTest.from_file(str(APP), default_timeout=60)
     app.run()
+    app.sidebar.selectbox[0].set_value(SEASON).run()
+    return app
+
+
+@pytest.mark.parametrize("stat", ["woba", "k_rate", "ubb_rate"])
+def test_app_renders_every_stat_without_errors(stat):
+    app = run_app()
     app.sidebar.radio[0].set_value(stat).run()
     assert not app.exception
     assert len(app.metric) >= 7  # player tab (4) + league tab (3)
 
 
 def test_app_handles_a_late_season_date_and_short_range():
-    app = streamlit_testing.AppTest.from_file(str(APP), default_timeout=60)
-    app.run()
+    app = run_app()
     # Options display as labels ("Sep 1"); set_value takes the underlying date.
     app.select_slider[0].set_value(date(2024, 9, 1)).run()
     app.slider[0].set_value(25).run()
     assert not app.exception
-
-
-def run_app():
-    app = streamlit_testing.AppTest.from_file(str(APP), default_timeout=60)
-    app.run()
-    return app
 
 
 def hitter_box(app):
@@ -66,3 +69,24 @@ def test_chart_labels_each_forecast_date_once():
     for axis in axes:
         assert axis["format"] == "%b %-d"
         assert [tick["month"] for tick in axis["values"]] == [5, 6, 7, 8, 9]
+
+
+def test_trends_tab_lists_ten_hitters_each_way_and_can_reveal_outcomes():
+    app = run_app()
+    lists = [df for df in app.dataframe if "Why" in df.value.columns]
+    assert len(lists) == 2
+    assert all(len(df.value) == 10 for df in lists)
+    app.toggle[0].set_value(True).run()
+    assert not app.exception
+    assert all("What happened next" in df.value.columns
+               for df in app.dataframe if "Why" in df.value.columns)
+
+
+@pytest.mark.parametrize("season", [2026, 2024, 2018])
+def test_switching_seasons_after_moving_the_date_slider(season):
+    # Regression test: a date picked in one season used to crash another season.
+    app = streamlit_testing.AppTest.from_file(str(APP), default_timeout=60)
+    app.run()
+    app.select_slider[0].set_value(app.select_slider[0].value).run()
+    app.sidebar.selectbox[0].set_value(season).run()
+    assert not app.exception
