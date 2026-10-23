@@ -25,7 +25,7 @@ KEYS = ["season", "asof_date", "batter"]
 # 2015-2017 are history for Marcel. 2020 is excluded: the season started in
 # late July, so the May-July forecast dates have no data, and 60 games is
 # too few for a fair test.
-EVAL_SEASONS = [2018, 2019, 2021, 2022, 2023, 2024]
+EVAL_SEASONS = [2018, 2019, 2021, 2022, 2023, 2024, 2025, 2026]
 
 # Below this, the "actual" rest-of-season rate is mostly noise.
 MIN_PA_ROS = 50

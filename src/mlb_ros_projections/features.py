@@ -18,7 +18,7 @@ SQL_FILES = ["features.sql", "baselines.sql", "parks.sql", "model_inputs.sql"]
 TABLES = [
     "pa", "batter_day", "batter_season", "snapshot_dates", "batter_snapshot",
     "league_season", "batter_age", "marcel", "batter_baselines",
-    "park_factors", "park_exposure_ytd", "park_exposure_ros", "park_exposure_hist",
+    "game_venue", "park_factors", "park_exposure_ytd", "park_exposure_ros", "park_exposure_hist",
     "league_snapshot", "environment", "model_inputs",
 ]
 

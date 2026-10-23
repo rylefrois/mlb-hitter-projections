@@ -23,6 +23,10 @@ def build() -> None:
         CREATE OR REPLACE VIEW people AS
         SELECT * FROM read_parquet('data/raw/people.parquet')
     """)
+    con.execute("""
+        CREATE OR REPLACE VIEW venues AS
+        SELECT * FROM read_parquet('data/raw/venues.parquet')
+    """)
     con.close()
     print(f"built {DB_PATH}")
 
