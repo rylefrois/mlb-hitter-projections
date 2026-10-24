@@ -8,7 +8,7 @@ The method starts from Marcel (a simple, well-known projection system) and updat
 
 ![The Player tab: Yordan Álvarez's 2026 wOBA forecast through the season](docs/images/player-tab.png)
 
-*Yordan Álvarez, 2026. On May 1 he was hitting .494 (grey). The model forecast .414 (blue) and he hit .417 the rest of the way (green). On June 1, shown here, the forecast was .415 with an 80% range of .376–.454, and he finished at .428. His preseason projection was .385 (orange).*
+*Yordan Álvarez's wOBA in 2026. On May 1 his season-to-date wOBA was .494 (grey). The model forecast .414 for the rest of the season (blue), and his actual rest-of-season wOBA was .417 (green). On June 1, shown here, the forecast was .415 with an 80% range of .376–.454, and his rest-of-season wOBA came in at .428. His preseason projection was .385 (orange).*
 
 **Read next:**
 - [Decision memo](docs/decision_memo.md): which slumps, hot starts and breakouts to believe.
