@@ -4,11 +4,11 @@ from pathlib import Path
 
 import pytest
 
-DB_PATH = Path(__file__).resolve().parents[1] / "data" / "mlb.duckdb"
+APP_DATA = Path(__file__).resolve().parents[1] / "app" / "data" / "app_forecasts.parquet"
 APP = Path(__file__).resolve().parents[1] / "app" / "streamlit_app.py"
 
 streamlit_testing = pytest.importorskip("streamlit.testing.v1")
-pytestmark = pytest.mark.skipif(not DB_PATH.exists(), reason="needs the built database")
+pytestmark = pytest.mark.skipif(not APP_DATA.exists(), reason="needs the app's data file")
 
 
 # Tests pin a season so they don't depend on which season is newest.

@@ -1,16 +1,21 @@
 """Run the final model once and save every forecast for the app.
 
-The app only reads the `app_forecasts` table this creates, so it never
-retrains the model.
+Creates the `app_forecasts` table and a compressed copy of it in the repo
+(app/data), which is all the app reads. So the app never retrains the model,
+and it runs without the full database, e.g. when hosted.
 
 Usage:
     python -m mlb_ros_projections.forecasts
 """
 
+from pathlib import Path
+
 import duckdb
 
 from mlb_ros_projections.build_db import DB_PATH
 from mlb_ros_projections.models import FINAL_MODEL, MODEL_SPECS, forward_chain, load_model_inputs
+
+APP_DATA_PATH = Path(__file__).resolve().parents[2] / "app" / "data" / "app_forecasts.parquet"
 
 
 def build_app_forecasts(con: duckdb.DuckDBPyConnection) -> int:
@@ -58,6 +63,10 @@ def build_app_forecasts(con: duckdb.DuckDBPyConnection) -> int:
         LEFT JOIN batter_age AS a USING (season, batter)
         WHERE i.pa_ytd > 0
     """)
+    APP_DATA_PATH.parent.mkdir(parents=True, exist_ok=True)
+    con.execute(
+        f"COPY app_forecasts TO '{APP_DATA_PATH}' (FORMAT parquet, COMPRESSION zstd)"
+    )
     return con.execute("SELECT count(*) FROM app_forecasts").fetchone()[0]
 
 
@@ -65,7 +74,7 @@ def main() -> None:
     con = duckdb.connect(str(DB_PATH))
     n = build_app_forecasts(con)
     con.close()
-    print(f"app_forecasts: {n:,} rows ({FINAL_MODEL})")
+    print(f"app_forecasts: {n:,} rows ({FINAL_MODEL}), saved to {APP_DATA_PATH}")
 
 
 if __name__ == "__main__":

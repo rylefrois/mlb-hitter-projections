@@ -4,16 +4,21 @@ Run from the repository root, after building the data:
     streamlit run app/streamlit_app.py
 """
 
+import sys
 from pathlib import Path
 
 import altair as alt
-import duckdb
 import numpy as np
 import pandas as pd
 import streamlit as st
 
+ROOT = Path(__file__).resolve().parents[1]
+# Lets the app import the project's code when it isn't pip-installed (e.g. when hosted).
+sys.path.insert(0, str(ROOT / "src"))
+
 from mlb_ros_projections.backtest import EVAL_SEASONS
 from mlb_ros_projections.calibration import interval
+from mlb_ros_projections.forecasts import APP_DATA_PATH
 from mlb_ros_projections.models import FINAL_MODEL, sd_from_parts
 from mlb_ros_projections.trends import (
     list_track_record,
@@ -21,8 +26,6 @@ from mlb_ros_projections.trends import (
     rank_candidates,
 )
 
-ROOT = Path(__file__).resolve().parents[1]
-DB_PATH = ROOT / "data" / "mlb.duckdb"
 REPORTS_DIR = ROOT / "reports"
 
 STATS = {
@@ -48,8 +51,7 @@ def fmt(stat: str, value: float) -> str:
 
 @st.cache_data
 def load_forecasts() -> pd.DataFrame:
-    with duckdb.connect(str(DB_PATH), read_only=True) as con:
-        df = con.execute("SELECT * FROM app_forecasts").df()
+    df = pd.read_parquet(APP_DATA_PATH)
     df["asof_date"] = pd.to_datetime(df["asof_date"]).dt.date
     return df
 
@@ -415,7 +417,7 @@ def main() -> None:
     st.caption("Marcel updated with this season's data (empirical Bayes), with honest "
                "uncertainty ranges. Every forecast uses only data available on its date.")
 
-    if not DB_PATH.exists():
+    if not APP_DATA_PATH.exists():
         st.error("No data found. Build it first: see the README.")
         st.stop()
     df = load_forecasts()
