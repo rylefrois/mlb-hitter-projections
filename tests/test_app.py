@@ -107,3 +107,32 @@ def test_model_performance_shows_accuracy_by_date_and_sample_size():
     indexes = [list(df.value.index) for df in app.dataframe]
     assert ["May 1", "Jun 1", "Jul 1", "Aug 1", "Sep 1"] in indexes
     assert any(index[0] == "1-49 PA so far" for index in indexes if index)
+
+
+def test_reset_button_restores_every_filter_to_its_default():
+    app = streamlit_testing.AppTest.from_file(str(APP), default_timeout=60)
+    app.run()
+    defaults = {
+        "season": app.session_state["season"],
+        "stat": app.session_state["stat"],
+        "trends_min_pa": app.session_state["trends_min_pa"],
+        "trends_next_pa": app.session_state["trends_next_pa"],
+        "trends_reveal": app.session_state["trends_reveal"],
+        "trends_versus": app.session_state["trends_versus"],
+    }
+
+    app.sidebar.selectbox[0].set_value(2024).run()
+    app.sidebar.radio[0].set_value("k_rate").run()
+    next(s for s in app.slider if s.label == "Minimum PA so far").set_value(150).run()
+    next(s for s in app.slider if s.label == "Next N plate appearances").set_value(300).run()
+    app.toggle[0].set_value(True).run()
+    next(r for r in app.radio if r.label == "Compare the forecast to").set_value("marcel").run()
+    next(b for b in app.selectbox if b.label == "Team").set_value("NYY").run()
+    assert app.session_state["season"] == 2024
+
+    app.sidebar.button[0].click().run()
+
+    assert not app.exception
+    for key, value in defaults.items():
+        assert app.session_state[key] == value, key
+    assert next(b for b in app.selectbox if b.label == "Team").value == "All teams"

@@ -173,6 +173,7 @@ def player_tab(df: pd.DataFrame, season: int, stat: str) -> None:
     remaining = st.slider(
         "Range over the next N plate appearances", 25, 700,
         value=int(np.clip(row["pa_ros"], 25, 700)), step=25,
+        key=f"player_range_{season}_{batter}_{asof}",
         help="Defaults to the PA the hitter actually had left. Fewer PA means more luck, "
              "so a wider range.",
     )
@@ -284,7 +285,7 @@ def trends_tab(df: pd.DataFrame, season: int, stat: str) -> None:
     if pool.empty:
         st.info("No hitters match these filters.")
         return
-    reveal = st.toggle("Reveal what happened next", value=False,
+    reveal = st.toggle("Reveal what happened next", value=False, key="trends_reveal",
                        help="These are past seasons, so you can check the calls.")
 
     up, down = rank_candidates(pool, stat, next_pa, versus=versus)
@@ -386,6 +387,16 @@ def performance_tab(stat: str) -> None:
     st.dataframe(cal.style.format("{:.1%}"), width="stretch")
 
 
+def reset_filters() -> None:
+    """Clear every widget's saved value, so each one starts over at its default.
+
+    Every filter has a key, so all of them are in session state. This runs as
+    the button's callback, before the app redraws.
+    """
+    for key in list(st.session_state.keys()):
+        del st.session_state[key]
+
+
 def main() -> None:
     st.set_page_config(page_title="Rest-of-Season Projections", layout="wide")
     st.title("Rest-of-season hitter projections")
@@ -398,8 +409,12 @@ def main() -> None:
     df = load_forecasts()
 
     with st.sidebar:
-        season = st.selectbox("Season", sorted(df["season"].unique(), reverse=True))
-        stat = st.radio("Stat", list(STATS), format_func=lambda s: STATS[s]["label"])
+        season = st.selectbox("Season", sorted(df["season"].unique(), reverse=True),
+                              key="season")
+        stat = st.radio("Stat", list(STATS), format_func=lambda s: STATS[s]["label"],
+                        key="stat")
+        st.button("Reset all filters", on_click=reset_filters, width="stretch",
+                  help="Put every filter on every tab back to its default.")
 
     player, trends, performance = st.tabs(["Player", "Hitters to watch", "Model performance"])
     with player:
