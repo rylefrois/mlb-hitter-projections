@@ -11,13 +11,15 @@
 
 ## 1. How much should this season count?
 
-The model learns how many plate appearances of evidence a hitter's track record is worth for each stat. Those values imply how much an established regular's **~200 plate appearances by June 1** (the median) should move the forecast:
+The model treats a hitter's track record (their preseason projection) as if it were a set of extra plate appearances, and blends it with this season's plate appearances according to how many of each there are. It learns from past seasons how many plate appearances the track record is worth for each stat. For an established regular with **~200 plate appearances by June 1** (the median), that gives this season the following share of the forecast:
 
 | Stat | Track record worth | This season's share on June 1 |
 |---|---|---|
 | K% | ~335 PA | **37%** |
 | wOBA | ~600 PA | **23%** |
 | BB% | ~700 PA | **22%** |
+
+**Example:** a hitter projected for a .340 wOBA has a .400 wOBA through June 1. The forecast is 23% × .400 + 77% × .340 ≈ **.354**: the hot start moves it only about a quarter of the way. A hitter projected for a 20% K rate who is striking out 28% of the time gets 37% × 28% + 63% × 20% ≈ **23%**, more than a third of the way, because K% reflects a hitter's skill faster than wOBA, which depends heavily on whether balls in play find holes.
 
 For a hitter with no MLB history, the track record is worth far less (about 250 PA for wOBA), so this season counts for about 42%. **K% is the stat to believe first:** with 300+ PA, a hitter's season-to-date K% beats their preseason projection (RMSE .0412 vs .0447). wOBA and BB% never get there.
 
