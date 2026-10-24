@@ -95,3 +95,7 @@ tests/
 - **Marcel** is Tom Tango's projection system.
 
 Raw data isn't included in this repository. `make data` downloads it.
+
+## License
+
+The code is released under the [MIT License](LICENSE). The data it downloads belongs to its sources and isn't covered by this license.
