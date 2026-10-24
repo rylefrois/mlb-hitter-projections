@@ -145,15 +145,15 @@ def player_tab(df: pd.DataFrame, season: int, stat: str) -> None:
     team_col, hitter_col, date_col = st.columns([1, 2, 1])
     # Keys include the season (and team), so these reset when it changes instead of
     # keeping a value, like a date from another season, that is no longer an option.
-    team = team_col.selectbox("Team", [ALL_TEAMS, *teams], key=f"player_team_{season}")
+    team = team_col.selectbox("Team", [ALL_TEAMS, *teams], key=widget_key(f"player_team_{season}"))
     options = hitter_options(season_df, team)
     batter = hitter_col.selectbox("Hitter", list(options), format_func=options.get,
-                                  key=f"player_hitter_{season}_{team}",
+                                  key=widget_key(f"player_hitter_{season}_{team}"),
                                   help="Type to search. Sorted by playing time.")
     history = season_df[season_df["batter"] == batter].sort_values("asof_date")
     dates = history["asof_date"].tolist()
     asof = date_col.select_slider("Forecast date", options=dates, value=dates[0],
-                                  key=f"player_date_{season}_{batter}",
+                                  key=widget_key(f"player_date_{season}_{batter}"),
                                   format_func=lambda d: d.strftime("%b %-d"))
     row = history[history["asof_date"] == asof].iloc[0]
 
@@ -173,7 +173,7 @@ def player_tab(df: pd.DataFrame, season: int, stat: str) -> None:
     remaining = st.slider(
         "Range over the next N plate appearances", 25, 700,
         value=int(np.clip(row["pa_ros"], 25, 700)), step=25,
-        key=f"player_range_{season}_{batter}_{asof}",
+        key=widget_key(f"player_range_{season}_{batter}_{asof}"),
         help="Defaults to the PA the hitter actually had left. Fewer PA means more luck, "
              "so a wider range.",
     )
@@ -262,7 +262,7 @@ def candidate_table(picks: pd.DataFrame, stat: str, chance_label: str, flip: boo
 
 def trends_tab(df: pd.DataFrame, season: int, stat: str) -> None:
     versus = st.radio("Compare the forecast to", list(VIEWS), horizontal=True,
-                      format_func=lambda v: VIEWS[v]["option"], key="trends_versus")
+                      format_func=lambda v: VIEWS[v]["option"], key=widget_key("trends_versus"))
     view = VIEWS[versus]
     st.markdown(view["intro"] + " The chance is how likely the next N PA are to come out "
                 "ahead, based on the forecast ranges.")
@@ -273,10 +273,10 @@ def trends_tab(df: pd.DataFrame, season: int, stat: str) -> None:
     c1, c2, c3, c4 = st.columns(4)
     asof = c1.select_slider("Forecast date", options=dates, value=dates[1] if len(dates) > 1
                             else dates[0], format_func=lambda d: d.strftime("%b %-d"),
-                            key=f"trends_date_{season}")
-    team = c2.selectbox("Team", [ALL_TEAMS, *teams], key=f"trends_team_{season}")
-    min_pa = c3.slider("Minimum PA so far", 25, 300, 75, step=25, key="trends_min_pa")
-    next_pa = c4.slider("Next N plate appearances", 50, 400, 150, step=25, key="trends_next_pa",
+                            key=widget_key(f"trends_date_{season}"))
+    team = c2.selectbox("Team", [ALL_TEAMS, *teams], key=widget_key(f"trends_team_{season}"))
+    min_pa = c3.slider("Minimum PA so far", 25, 300, 75, step=25, key=widget_key("trends_min_pa"))
+    next_pa = c4.slider("Next N plate appearances", 50, 400, 150, step=25, key=widget_key("trends_next_pa"),
                         help="Over more PA, luck evens out, so the calls get more confident.")
 
     pool = season_df[(season_df["asof_date"] == asof) & (season_df["pa_ytd"] >= min_pa)]
@@ -285,7 +285,7 @@ def trends_tab(df: pd.DataFrame, season: int, stat: str) -> None:
     if pool.empty:
         st.info("No hitters match these filters.")
         return
-    reveal = st.toggle("Reveal what happened next", value=False, key="trends_reveal",
+    reveal = st.toggle("Reveal what happened next", value=False, key=widget_key("trends_reveal"),
                        help="These are past seasons, so you can check the calls.")
 
     up, down = rank_candidates(pool, stat, next_pa, versus=versus)
@@ -387,14 +387,26 @@ def performance_tab(stat: str) -> None:
     st.dataframe(cal.style.format("{:.1%}"), width="stretch")
 
 
-def reset_filters() -> None:
-    """Clear every widget's saved value, so each one starts over at its default.
+RESET_COUNT = "filters_reset_count"
 
-    Every filter has a key, so all of them are in session state. This runs as
-    the button's callback, before the app redraws.
+
+def widget_key(name: str) -> str:
+    """Key for a filter widget, tagged with how many times filters have been reset."""
+    return f"{name}__reset{st.session_state.get(RESET_COUNT, 0)}"
+
+
+def reset_filters() -> None:
+    """Put every filter back to its default.
+
+    Deleting saved values isn't enough: the browser keeps its own copy of each
+    widget's value and sends it back on the next interaction, so an old choice
+    reappears. Bumping the reset count gives every widget a new key, which makes
+    them brand-new widgets that start at their defaults.
     """
-    for key in list(st.session_state.keys()):
-        del st.session_state[key]
+    count = st.session_state.get(RESET_COUNT, 0)
+    for name in [k for k in st.session_state if k != RESET_COUNT]:
+        del st.session_state[name]  # old widgets' values are never used again
+    st.session_state[RESET_COUNT] = count + 1
 
 
 def main() -> None:
@@ -410,9 +422,9 @@ def main() -> None:
 
     with st.sidebar:
         season = st.selectbox("Season", sorted(df["season"].unique(), reverse=True),
-                              key="season")
+                              key=widget_key("season"))
         stat = st.radio("Stat", list(STATS), format_func=lambda s: STATS[s]["label"],
-                        key="stat")
+                        key=widget_key("stat"))
         st.button("Reset all filters", on_click=reset_filters, width="stretch",
                   help="Put every filter on every tab back to its default.")
 

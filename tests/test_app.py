@@ -109,17 +109,24 @@ def test_model_performance_shows_accuracy_by_date_and_sample_size():
     assert any(index[0] == "1-49 PA so far" for index in indexes if index)
 
 
+def keys(app):
+    # AppTest's session state has .keys() but can't be iterated directly.
+    return list(app.session_state.keys())
+
+
+def state(app, name):
+    """A filter's value, whatever reset generation its key is on."""
+    matches = [k for k in keys(app) if k.startswith(f"{name}__reset")]
+    assert len(matches) == 1, (name, matches)
+    return app.session_state[matches[0]]
+
+
 def test_reset_button_restores_every_filter_to_its_default():
     app = streamlit_testing.AppTest.from_file(str(APP), default_timeout=60)
     app.run()
-    defaults = {
-        "season": app.session_state["season"],
-        "stat": app.session_state["stat"],
-        "trends_min_pa": app.session_state["trends_min_pa"],
-        "trends_next_pa": app.session_state["trends_next_pa"],
-        "trends_reveal": app.session_state["trends_reveal"],
-        "trends_versus": app.session_state["trends_versus"],
-    }
+    names = ["season", "stat", "trends_min_pa", "trends_next_pa", "trends_reveal", "trends_versus"]
+    defaults = {name: state(app, name) for name in names}
+    default_hitter = hitter_box(app).value
 
     app.sidebar.selectbox[0].set_value(2024).run()
     app.sidebar.radio[0].set_value("k_rate").run()
@@ -128,11 +135,25 @@ def test_reset_button_restores_every_filter_to_its_default():
     app.toggle[0].set_value(True).run()
     next(r for r in app.radio if r.label == "Compare the forecast to").set_value("marcel").run()
     next(b for b in app.selectbox if b.label == "Team").set_value("NYY").run()
-    assert app.session_state["season"] == 2024
+    assert state(app, "season") == 2024
 
     app.sidebar.button[0].click().run()
 
     assert not app.exception
-    for key, value in defaults.items():
-        assert app.session_state[key] == value, key
+    for name, value in defaults.items():
+        assert state(app, name) == value, name
     assert next(b for b in app.selectbox if b.label == "Team").value == "All teams"
+    assert hitter_box(app).value == default_hitter
+
+
+def test_reset_gives_every_filter_a_new_key():
+    # A browser keeps its own copy of each widget's value and sends it back on the
+    # next interaction, so a reset that only cleared saved values let old choices
+    # reappear. New keys make brand-new widgets the browser has no copy of.
+    app = streamlit_testing.AppTest.from_file(str(APP), default_timeout=60)
+    app.run()
+    before = {k for k in keys(app) if "__reset" in k}
+    app.sidebar.button[0].click().run()
+    after = {k for k in keys(app) if "__reset" in k}
+    assert before and after
+    assert before.isdisjoint(after)
