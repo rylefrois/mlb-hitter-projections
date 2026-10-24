@@ -27,7 +27,6 @@ Error in forecasting each hitter's rest-of-season rate (RMSE, weighted by plate 
 | *Noise floor (perfect knowledge of talent)* | *.0287* | *.0188* | *.0356* |
 
 - **Squared error is 22%, 10% and 9% lower than Marcel's,** and the model beats both baselines at every forecast date and sample size.
-- **Season-to-date wOBA predicts worse than assuming everyone is league average.**
 - **The ranges are calibrated:** 80% ranges contain the actual result 79.8% (K%), 81.3% (BB%) and 80.5% (wOBA) of the time.
 - **Every idea is scored on its own** in a step-by-step comparison (an ablation), including one that didn't help K%. See the [model card](docs/model_card.md#accuracy-rmse-lower-is-better).
 
