@@ -4,6 +4,8 @@ How much should you believe a hitter's season so far? This project forecasts eve
 
 The method starts from Marcel (a simple, well-known projection system) and updates it with this season's data using empirical Bayes. It's backtested on **15,108 forecasts across 2018–2026** using only data available on each forecast date.
 
+**[Try the live app →](https://mlb-hitter-projections.streamlit.app)** (if it's been idle, it may take about 30 seconds to wake up)
+
 **Read next:**
 - [Decision memo](docs/decision_memo.md): which slumps, hot starts and breakouts to believe.
 - [Model card](docs/model_card.md): how the model works, how it was validated, and its limitations.
