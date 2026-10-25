@@ -5,7 +5,7 @@
 ## Bottom line
 
 1. **Don't act on season-to-date numbers alone.** Taken at face value, a hitter's wOBA so far predicts the rest of the season *worse than assuming everyone is league average*: RMSE .0742 vs .0471.
-2. **Slumps mostly fix themselves; hot starts are where judgment pays off.** Even a naive list of the worst hitters on June 1 improves 96% of the time. A naive list of the *best* hitters holds up far less well, and the model's edge in spotting hot starts that won't last grows as the season goes on.
+2. **Slumps mostly fix themselves; hot starts are where judgment pays off.** Even a naive list of the worst wOBA hitters on June 1 improves 96% of the time. A naive list of the *best* hitters holds up far less well, and the model's edge in spotting hot starts that won't last grows as the season goes on.
 3. **"Breakouts" are close to coin flips.** Whether a hitter beats their *preseason* projection the rest of the way is a much harder call, and the model's edge here is real but modest.
 4. **Weigh contact quality and park changes more than results.** The best read of a hitter's current wOBA is about two-thirds xwOBA. Hitters moving to better hitting parks are under-forecast by about 11 points of wOBA without a park adjustment.
 
@@ -25,9 +25,20 @@ For a hitter with no MLB history, the track record is worth far less (about 250 
 
 ## 2. Slumps and hot starts
 
-On each date, the model lists the 10 hitters most likely to beat their season-to-date wOBA from here ("slumps to ignore") and the 10 most likely to fall short ("hot starts to doubt"). Naive lists are simply the 10 worst and the 10 best hitters so far.
+On each date, for each stat, the model lists the 10 hitters most likely to beat their season-to-date number from here ("slumps to ignore") and the 10 most likely to fall short ("hot starts to doubt"). For K%, beating it means striking out less. Naive lists are simply the 10 worst and the 10 best hitters so far.
 
-The numbers below are the share that moved as called, pooled over 8 seasons (80 hitters per cell), for hitters with 75+ PA so far:
+All numbers below are the share that moved as called, pooled over 8 seasons (80 hitters per list and date), for hitters with 75+ PA so far.
+
+**All three stats, averaged over the five forecast dates:**
+
+| | wOBA | K% | BB% |
+|---|---|---|---|
+| Slumps that improved: model | 95% | 88% | 92% |
+| Slumps that improved: naive | 90% | 80% | 87% |
+| Hot starts that declined: model | 94% | 89% | 94% |
+| Hot starts that declined: naive | 85% | 74% | 86% |
+
+**One stat in detail, wOBA by date:**
 
 | wOBA | May 1 | Jun 1 | Jul 1 | Aug 1 | Sep 1 |
 |---|---|---|---|---|---|
@@ -36,8 +47,10 @@ The numbers below are the share that moved as called, pooled over 8 seasons (80 
 | Hot starts that declined: model | 100% | 99% | 95% | 90% | **84%** |
 | Hot starts that declined: naive | 95% | 90% | 91% | 84% | **66%** |
 
-- **Regression to the mean does most of the work for slumps.** Bad starts bounce back whether or not a model picks them. The naive list's misses are hitters who really were that bad, and the model avoided all six of them on May 1.
-- **Hot starts are where the model adds the most:** 84% vs 66% on September 1. A late-season hot streak from a hitter with a weaker track record and lucky contact is the classic case to doubt.
+- **For every stat and every date, the model's lists match or beat the naive lists.**
+- **For wOBA and BB%, regression to the mean does most of the work on slumps.** Bad starts bounce back whether or not a model picks them. The naive wOBA list's misses on May 1 were hitters who really were that bad, and the model avoided all six of them.
+- **K% slumps are different.** A high-strikeout start is more often real, so the naive list does worse (66% on September 1) and the model's edge is larger (78%).
+- **Hot starts are where the model adds the most,** with edges of 15–19 points from July on: wOBA 84% vs 66% on September 1, K% 91% vs 72% on July 1, and BB% 85% vs 70% on September 1. A hot streak from a hitter with a weaker track record and lucky contact is the classic case to doubt.
 
 ## 3. Has the outlook really changed?
 
