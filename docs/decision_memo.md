@@ -6,7 +6,7 @@
 
 1. **Don't act on season-to-date numbers alone.** Taken at face value, a hitter's wOBA so far predicts the rest of the season *worse than assuming everyone is league average*: RMSE .0742 vs .0471.
 2. **Slumps mostly fix themselves; hot starts are where judgment pays off.** Even a naive list of the worst wOBA hitters on June 1 improves 96% of the time. A naive list of the *best* hitters holds up less well, especially late in the season, and the model's edge in spotting hot starts that won't last is largest from July on.
-3. **"Breakouts" are close to coin flips.** Whether a hitter beats their *preseason* projection the rest of the way is a much harder call, and the model's edge here is real but modest.
+3. **wOBA "breakouts" are close to coin flips; strikeout changes aren't.** Whether a hitter beats their *preseason* wOBA projection the rest of the way is a hard call, and the model's edge is real but modest. A change in strikeout rate is far more likely to last.
 4. **Weigh contact quality and park changes more than results.** The best read of a hitter's current wOBA is about two-thirds xwOBA. Hitters moving to better hitting parks are under-forecast by about 11 points of wOBA without a park adjustment.
 
 ## 1. How much should this season count?
@@ -54,14 +54,30 @@ All numbers below are the share that moved as called, pooled over 8 seasons (80 
 
 ## 3. Has the outlook really changed?
 
-The harder question is whether a hitter will beat their **preseason projection** from here: is the breakout real? The model's "outlooks raised" list does better than taking hot starts at face value at every date:
+The harder question is whether a hitter will beat their **preseason projection** from here: is the breakout real? On each date, for each stat, the model lists the 10 hitters most likely to beat their preseason projection ("outlooks raised") and the 10 most likely to fall short ("outlooks lowered"). The naive lists take the season so far at face value: the 10 hitters running furthest above, and furthest below, their projection.
+
+**All three stats, averaged over the five forecast dates** (share that moved as called, 80 hitters per list and date, 75+ PA so far):
+
+| | wOBA | K% | BB% |
+|---|---|---|---|
+| Outlooks raised that beat preseason: model | 68% | 88% | 76% |
+| Outlooks raised that beat preseason: naive | 59% | 82% | 68% |
+| Outlooks lowered that fell short: model | 72% | 89% | 78% |
+| Outlooks lowered that fell short: naive | 72% | 86% | 76% |
+
+**One stat in detail, wOBA outlooks raised by date:**
 
 | wOBA, outlooks raised that beat preseason | May 1 | Jun 1 | Jul 1 | Aug 1 | Sep 1 |
 |---|---|---|---|---|---|
 | Model | 59% | 65% | 74% | 74% | 68% |
-| Naive (biggest gain over projection so far) | 51% | 59% | 66% | 56% | 61% |
+| Naive | 51% | 59% | 66% | 56% | 61% |
 
-For **lowered** outlooks the model shows no consistent edge: 70–75%, against 61–81% for the naive list. The model's stated chances are also **optimistic in this view**: wOBA hitters given 66% beat their projection 61% of the time. **Treat a believed breakout as a lean, not a lock.**
+- **Raised outlooks: the model beats taking a hot start at face value for all three stats.** It is ahead or tied on every date except K% on May 1.
+- **Lowered outlooks: the edge is small for K% and BB%, and there's none for wOBA.** On some dates the naive list did better, e.g. K% on June 1 (88% vs 84%) and wOBA on August 1 (81% vs 70%).
+- **Strikeout changes are the most trustworthy.** K% calls held up 79–95% of the time, against 59–75% for wOBA, because a real change in strikeout rate shows up quickly.
+- **The model's stated chances are a little off in this view.** They run optimistic for wOBA and BB%: hitters given about 67% beat their projection about 61% of the time. For K% they run slightly pessimistic: hitters given 68% did it 71% of the time.
+
+**Treat a believed wOBA breakout as a lean, not a lock. A strikeout-rate change backed by the model is much safer to act on.**
 
 ## 4. Contact quality, playing time and parks
 

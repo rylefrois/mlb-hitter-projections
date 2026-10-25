@@ -130,5 +130,5 @@ The **noise floor** is the error a forecaster would still make if they knew ever
 - **wOBA uses Statcast's scale** (fixed weights; reaching on an error counts like a single). It runs a few points higher than FanGraphs' wOBA, but it is consistent across seasons.
 - **"Chance to beat" percentages in the app:**
   - Against **season to date**, they are within about 5 points of what actually happened.
-  - Against **the preseason projection**, they run optimistic in the middle. For example, wOBA hitters given 48% beat their projection 43% of the time, and hitters given 66% did 61% of the time. Use them for ranking, not as exact odds.
+  - Against **the preseason projection**, they run optimistic for wOBA and BB%. For example, wOBA hitters given 48% beat their projection 43% of the time, and hitters given 66% did 61% of the time. For K% they run slightly pessimistic: hitters given 68% did it 71% of the time. Use them for ranking, not as exact odds.
 - **The team on a forecast date** is the one the hitter last batted for, so a trade shows up from the hitter's first game with the new team.
