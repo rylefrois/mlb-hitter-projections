@@ -5,7 +5,7 @@
 ## Bottom line
 
 1. **Don't act on season-to-date numbers alone.** Taken at face value, a hitter's wOBA so far predicts the rest of the season *worse than assuming everyone is league average*: RMSE .0742 vs .0471.
-2. **Slumps mostly fix themselves; hot starts are where judgment pays off.** Even a naive list of the worst wOBA hitters on June 1 improves 96% of the time. A naive list of the *best* hitters holds up far less well, and the model's edge in spotting hot starts that won't last grows as the season goes on.
+2. **Slumps mostly fix themselves; hot starts are where judgment pays off.** Even a naive list of the worst wOBA hitters on June 1 improves 96% of the time. A naive list of the *best* hitters holds up less well, especially late in the season, and the model's edge in spotting hot starts that won't last is largest from July on.
 3. **"Breakouts" are close to coin flips.** Whether a hitter beats their *preseason* projection the rest of the way is a much harder call, and the model's edge here is real but modest.
 4. **Weigh contact quality and park changes more than results.** The best read of a hitter's current wOBA is about two-thirds xwOBA. Hitters moving to better hitting parks are under-forecast by about 11 points of wOBA without a park adjustment.
 
